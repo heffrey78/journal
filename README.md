@@ -39,19 +39,50 @@ The application uses a simple architecture with SQLite at its core:
    ```
    pip install -r requirements.txt
    ```
+   For development, use:
+   ```
+   pip install -r requirements-dev.txt
+   ```
 4. Make sure you have Ollama installed and running locally (see [Ollama website](https://ollama.com/))
+5. Initialize the database:
+   ```
+   python -c "from app.storage import StorageManager; StorageManager().initialize_db()"
+   ```
 
 ## Usage
+
+### Starting the Application
 
 1. Start the API server:
    ```
    uvicorn main:app --reload
    ```
+   Or use the simpler command:
+   ```
+   python main.py
+   ```
 2. Open your browser to `http://localhost:8000` to access the UI
-3. Use the CLI for quick entries:
-   ```
-   python cli.py add "My journal entry title" "Content of my entry"
-   ```
+
+### Using the CLI
+
+The CLI provides quick access to journal functions from the terminal:
+
+```
+# Add a new entry
+python cli.py add "My journal entry title" "Content of my entry"
+
+# List recent entries
+python cli.py list
+
+# Show a specific entry
+python cli.py show 20250503110105
+
+# Search for entries
+python cli.py search "query text"
+
+# Use semantic search
+python cli.py search "query text" --semantic
+```
 
 ## Vector Search Setup
 
@@ -133,11 +164,93 @@ This will index any new entries into the semantic search engine.
 
 ## API Endpoints
 
+The Journal App exposes the following REST API endpoints:
+
+### Entries Management
+
 - `POST /entries/`: Create a new journal entry
-- `GET /entries/`: List all journal entries
-- `GET /entries/{entry_id}`: Get a specific entry
-- `GET /search/?q=query&semantic=true`: Search entries (set semantic=true for vector search)
-- `POST /entries/{entry_id}/summary`: Get AI summary of an entry
+- `GET /entries/`: List all journal entries (with pagination and filters)
+- `GET /entries/{entry_id}`: Get a specific entry by ID
+- `PATCH /entries/{entry_id}`: Update an existing entry
+- `DELETE /entries/{entry_id}`: Delete an entry
+
+### Search
+
+- `GET /entries/search/?query=text&semantic=true`: Simple search via query parameters
+- `POST /entries/search/`: Advanced search with JSON body for complex filters
+
+### Tags
+
+- `GET /tags/`: List all unique tags used in entries
+- `GET /tags/{tag}/entries`: Get all entries with a specific tag
+
+### LLM Features
+
+- `POST /entries/{entry_id}/summarize`: Generate AI summary of an entry
+
+### Statistics
+
+- `GET /stats/`: Get statistics about your journal entries
+
+## Error Handling
+
+The API provides structured error responses for easier debugging:
+
+```json
+{
+  "status_code": 404,
+  "message": "Entry with ID 20220101000000 not found",
+  "details": null,
+  "timestamp": "2025-05-03T12:34:56"
+}
+```
+
+## Testing
+
+The project includes comprehensive tests for all major components:
+
+### Running Tests
+
+```
+# Run all tests
+pytest
+
+# Run specific test file
+pytest test_api.py
+
+# Run with coverage report
+pytest --cov=app
+```
+
+### Test Categories
+
+- Unit tests: Test individual components in isolation
+- Integration tests: Test components working together
+- API tests: Test the HTTP API endpoints
+- Search tests: Dedicated tests for various search capabilities
+
+## Development
+
+### Project Structure
+
+- `app/`: Main application code
+  - `api.py`: FastAPI routes and handlers
+  - `models.py`: Pydantic data models
+  - `storage.py`: Data storage and retrieval logic
+  - `llm_service.py`: LLM integration for AI features
+- `static/`: Frontend UI files
+- `tests/`: Test modules
+- `cli.py`: Command-line interface
+- `main.py`: Application entry point
+- `update_embeddings.py`: Utility for generating embeddings
+- `process_embeddings.py`: Utility for processing existing entries
+
+### Contributing
+
+1. Create a feature branch: `git checkout -b feature-name`
+2. Make your changes
+3. Run tests: `pytest`
+4. Submit a pull request
 
 ## Example Usage
 

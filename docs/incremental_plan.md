@@ -72,15 +72,7 @@ git commit -m "Implement basic text search functionality"
 
 ## Phase 4: Ollama LLM Integration
 
-### Commit 8: Ollama Integration - Basic Setup
-```
-git commit -m "Add Ollama client integration and dependency"
-```
-- Add ollama to requirements
-- Implement basic LLMService class
-- Add simple test to verify Ollama connection
-
-### Commit 9: Structured Output Implementation
+### Commit 8: Structured Output Implementation
 ```
 git commit -m "Implement structured outputs for journal entry analysis"
 ```
@@ -89,7 +81,7 @@ git commit -m "Implement structured outputs for journal entry analysis"
 - Connect to API via endpoint
 - Test with sample journal entries
 
-### Commit 10: Semantic Search
+### Commit 9: Semantic Search
 ```
 git commit -m "Add semantic search functionality via Ollama embeddings"
 ```
@@ -100,7 +92,7 @@ git commit -m "Add semantic search functionality via Ollama embeddings"
 
 ## Phase 5: Frontend Implementation
 
-### Commit 11: Basic HTML/CSS Structure
+### Commit 10: Basic HTML/CSS Structure
 ```
 git commit -m "Add initial HTML structure and static file serving"
 ```
@@ -109,7 +101,7 @@ git commit -m "Add initial HTML structure and static file serving"
 - Configure FastAPI to serve static files
 - Test basic page loading
 
-### Commit 12: Entry Creation & Listing UI
+### Commit 11: Entry Creation & Listing UI
 ```
 git commit -m "Implement UI for creating and listing journal entries"
 ```
@@ -118,7 +110,7 @@ git commit -m "Implement UI for creating and listing journal entries"
 - Connect to API endpoints with JavaScript
 - Test basic workflow
 
-### Commit 13: Entry Detail View & Search UI
+### Commit 12: Entry Detail View & Search UI
 ```
 git commit -m "Add entry detail view and search functionality to UI"
 ```
@@ -129,7 +121,7 @@ git commit -m "Add entry detail view and search functionality to UI"
 
 ## Phase 6: LLM Features in UI
 
-### Commit 14: Summary Feature UI
+### Commit 13: Summary Feature UI
 ```
 git commit -m "Add entry summarization feature to UI"
 ```
@@ -138,7 +130,7 @@ git commit -m "Add entry summarization feature to UI"
 - Connect to summary endpoint
 - Test summarization functionality
 
-### Commit 15: Advanced Search Options
+### Commit 14: Advanced Search Options
 ```
 git commit -m "Enhance UI with semantic search toggle and advanced options"
 ```
@@ -148,7 +140,7 @@ git commit -m "Enhance UI with semantic search toggle and advanced options"
 
 ## Phase 7: Refinement & Quality Assurance
 
-### Commit 16: Error Handling & UX Improvements
+### Commit 15: Error Handling & UX Improvements
 ```
 git commit -m "Improve error handling and user experience"
 ```
@@ -157,7 +149,7 @@ git commit -m "Improve error handling and user experience"
 - Add confirmation dialogs
 - Test edge cases
 
-### Commit 17: Performance Optimization
+### Commit 16: Performance Optimization
 ```
 git commit -m "Optimize performance for vector search and entry loading"
 ```
@@ -166,7 +158,7 @@ git commit -m "Optimize performance for vector search and entry loading"
 - Implement caching where appropriate
 - Test with larger dataset
 
-### Commit 18: Documentation & Testing
+### Commit 17: Documentation & Testing
 ```
 git commit -m "Add comprehensive documentation and testing"
 ```

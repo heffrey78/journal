@@ -65,6 +65,12 @@
                 <form id="search-form">
                     <div class="form-group">
                         <input type="text" id="search-query" name="query" placeholder="Enter search terms..." required>
+                        <div class="search-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="semantic-search" name="semantic">
+                                Use semantic search (powered by Ollama)
+                            </label>
+                        </div>
                         <button type="submit" class="btn">Search</button>
                     </div>
                 </form>

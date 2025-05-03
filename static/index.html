@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journal App</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>My Journal</h1>
+            <nav>
+                <ul>
+                    <li><a href="#" id="new-entry-btn">New Entry</a></li>
+                    <li><a href="#" id="view-entries-btn">View Entries</a></li>
+                    <li><a href="#" id="search-btn">Search</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Entry creation form -->
+            <section id="entry-form" class="hidden">
+                <h2>Create New Journal Entry</h2>
+                <form id="journal-form">
+                    <div class="form-group">
+                        <label for="title">Title:</label>
+                        <input type="text" id="title" name="title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="content">Content:</label>
+                        <textarea id="content" name="content" rows="10" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="tags">Tags (comma-separated):</label>
+                        <input type="text" id="tags" name="tags">
+                    </div>
+                    <button type="submit" class="btn">Save Entry</button>
+                </form>
+            </section>
+
+            <!-- Entry listing -->
+            <section id="entry-list" class="hidden">
+                <h2>Journal Entries</h2>
+                <div id="entries-container">
+                    <!-- Entries will be loaded here -->
+                    <p class="loading-placeholder">Loading entries...</p>
+                </div>
+            </section>
+
+            <!-- Entry detail view -->
+            <section id="entry-detail" class="hidden">
+                <div class="entry-actions">
+                    <button id="back-to-list" class="btn">Back to List</button>
+                </div>
+                <div id="entry-content">
+                    <!-- Entry content will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Search section -->
+            <section id="search-section" class="hidden">
+                <h2>Search Entries</h2>
+                <form id="search-form">
+                    <div class="form-group">
+                        <input type="text" id="search-query" name="query" placeholder="Enter search terms..." required>
+                        <button type="submit" class="btn">Search</button>
+                    </div>
+                </form>
+                <div id="search-results">
+                    <!-- Search results will be loaded here -->
+                </div>
+            </section>
+
+            <!-- Welcome message - shown by default -->
+            <section id="welcome" class="active">
+                <h2>Welcome to Your Journal</h2>
+                <p>Start writing today to capture your thoughts, ideas, and experiences.</p>
+                <button id="welcome-new-entry" class="btn btn-large">Create Your First Entry</button>
+            </section>
+        </main>
+
+        <footer>
+            <p>Journal App &copy; 2025</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

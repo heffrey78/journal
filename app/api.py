@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi.staticfiles import StaticFiles
 from typing import List, Optional
 from datetime import datetime, date
 from pydantic import BaseModel
@@ -10,6 +11,9 @@ from app.llm_service import LLMService, EntrySummary
 app = FastAPI(
     title="Journal API", description="API for managing journal entries", version="0.1.0"
 )
+
+# Mount static files for UI
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Create a singleton storage manager
 storage_manager = None
@@ -86,6 +90,14 @@ class EntryStats(BaseModel):
 @app.get("/", tags=["root"])
 async def read_root():
     """Root endpoint that returns API information"""
+    from fastapi.responses import FileResponse
+
+    return FileResponse("static/home.html")
+
+
+@app.get("/api/info", tags=["root"])
+async def api_info():
+    """API information endpoint"""
     return {
         "name": "Journal API",
         "version": "0.1.0",

@@ -49,6 +49,7 @@ class SearchParams(BaseModel):
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     tags: Optional[List[str]] = None
+    semantic: bool = False  # Toggle for semantic search
 
 
 class TagCount(BaseModel):
@@ -186,21 +187,39 @@ async def delete_entry(entry_id: str, storage: StorageManager = Depends(get_stor
     return {"status": "success", "message": f"Entry {entry_id} deleted"}
 
 
-@app.post("/entries/search/", response_model=List[JournalEntry], tags=["search"])
+@app.post("/entries/search/", tags=["search"])
 async def advanced_search(
-    search_params: SearchParams, storage: StorageManager = Depends(get_storage)
+    search_params: SearchParams,
+    storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
 ):
     """
-    Advanced search for journal entries by text, date range, and tags
+    Advanced search for journal entries by text, date range, and tags.
+
+    Set semantic=true to use semantic search powered by Ollama embeddings.
     """
     try:
-        entries = storage.text_search(
-            query=search_params.query,
-            date_from=search_params.date_from,
-            date_to=search_params.date_to,
-            tags=search_params.tags,
-        )
-        return entries
+        if search_params.semantic:
+            # Use semantic search with LLM service
+            results = llm.semantic_search(search_params.query)
+
+            # Convert results to list of entries
+            entries = []
+            for result in results:
+                if "entry_id" in result:
+                    entry = storage.get_entry(result["entry_id"])
+                    if entry:
+                        entries.append(entry)
+            return entries
+        else:
+            # Regular text search
+            entries = storage.text_search(
+                query=search_params.query,
+                date_from=search_params.date_from,
+                date_to=search_params.date_to,
+                tags=search_params.tags,
+            )
+            return entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
@@ -208,12 +227,32 @@ async def advanced_search(
 @app.get("/entries/search/", response_model=List[JournalEntry], tags=["search"])
 async def simple_search(
     query: str = Query(..., min_length=1),
+    semantic: bool = False,
     storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
 ):
-    """Simple search for journal entries by text (GET method)"""
+    """
+    Simple search for journal entries by text.
+
+    Set semantic=true to use semantic search powered by Ollama embeddings.
+    """
     try:
-        entries = storage.text_search(query)
-        return entries
+        if semantic:
+            # Use semantic search with LLM service
+            results = llm.semantic_search(query)
+
+            # Convert results to list of entries
+            entries = []
+            for result in results:
+                if "entry_id" in result:
+                    entry = storage.get_entry(result["entry_id"])
+                    if entry:
+                        entries.append(entry)
+            return entries
+        else:
+            # Regular text search
+            entries = storage.text_search(query)
+            return entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 

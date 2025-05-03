@@ -1,119 +1,79 @@
 #!/usr/bin/env python3
 """
-Utility script to process embeddings for journal entries.
+Utility script to process journal entries and generate embeddings for semantic search.
 
-This script processes all journal entries that don't have embeddings yet,
-generating vector embeddings using Ollama and storing them in SQLite.
+This script:
+1. Processes journal entries that don't have embeddings yet
+2. Uses Ollama to generate embeddings for each chunk of text
+3. Updates the SQLite database with the embeddings
+
+Usage:
+  python process_embeddings.py [batch_size]
+
+Example:
+  python process_embeddings.py 10
 """
-import time
-import argparse
+
 import sys
+import time
 from app.storage import StorageManager
 from app.llm_service import LLMService
 
 
-def process_embeddings(
-    batch_size=10, model_name="nomic-embed-text:latest", verbose=True
-):
-    """
-    Process embeddings for all journal entries that don't have them yet.
+def process_all_embeddings(batch_size=10, model_name="nomic-embed-text:latest"):
+    """Process all entries without embeddings in batches"""
+    print(f"Processing embeddings using model: {model_name}")
 
-    Args:
-        batch_size: Number of chunks to process in each batch
-        model_name: Ollama model to use for embeddings
-        verbose: Whether to print progress information
-
-    Returns:
-        Total number of chunks processed
-    """
     # Initialize services
     storage = StorageManager()
-    llm = LLMService(model_name=model_name, storage_manager=storage)
+    llm_service = LLMService(model_name=model_name, storage_manager=storage)
 
-    if verbose:
-        print(f"Processing embeddings for journal entries using model: {model_name}")
-        print("This may take some time depending on the number of entries...")
-
+    # Process in batches until all are done
     total_processed = 0
     start_time = time.time()
 
     while True:
-        # Process in batches
-        processed = llm.process_entries_without_embeddings(limit=batch_size)
+        processed = llm_service.process_entries_without_embeddings(limit=batch_size)
         if processed == 0:
             break
 
         total_processed += processed
-        if verbose:
-            print(f"Processed {total_processed} chunks so far...")
+        elapsed = time.time() - start_time
+        print(f"Processed {total_processed} chunks in {elapsed:.2f} seconds")
 
-        # Small delay to avoid overwhelming Ollama
-        time.sleep(0.5)
-
-    elapsed_time = time.time() - start_time
-
-    if verbose:
-        print("\nFinished processing embeddings:")
-        print(f"- Total chunks processed: {total_processed}")
-        print(f"- Time taken: {elapsed_time:.2f} seconds")
-
-        if total_processed > 0:
-            print(
-                f"- Average time per chunk: {elapsed_time/total_processed:.2f} seconds"
-            )
+    print("\nFinished processing embeddings for all entries!")
+    print(f"Total chunks processed: {total_processed}")
+    print(f"Total time: {time.time() - start_time:.2f} seconds")
 
     return total_processed
 
 
-def main():
-    """Main function to run the embedding processor"""
-    parser = argparse.ArgumentParser(
-        description="Process embeddings for journal entries using Ollama"
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=10,
-        help="Number of chunks to process in each batch",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="nomic-embed-text:latest",
-        help="Ollama model to use for embeddings",
-    )
-    parser.add_argument(
-        "--quiet", action="store_true", help="Run without printing progress information"
-    )
+if __name__ == "__main__":
+    # Get batch size from command line or use default
+    batch_size = 10
+    if len(sys.argv) > 1:
+        try:
+            batch_size = int(sys.argv[1])
+            if batch_size < 1:
+                print("Batch size must be at least 1")
+                sys.exit(1)
+        except ValueError:
+            print(f"Invalid batch size: {sys.argv[1]}")
+            print("Using default batch size of 10")
 
-    args = parser.parse_args()
+    print(f"Processing embeddings with batch size: {batch_size}")
 
-    # Check if Ollama is available
     try:
         import ollama
 
-        # Quick test to ensure we can connect to Ollama
-        ollama.embeddings(model=args.model, prompt="test")
+        # Test if Ollama is available
+        ollama.embeddings(model="nomic-embed-text:latest", prompt="test")
+        process_all_embeddings(batch_size)
+    except ImportError:
+        print("Error: The ollama package is not installed.")
+        print("Please install it with: pip install ollama")
+        sys.exit(1)
     except Exception as e:
-        print(
-            "ERROR: Ollama is not available. Please ensure it's installed and running."
-        )
-        print(f"Exception: {e}")
-        return 1
-
-    # Process embeddings
-    total = process_embeddings(
-        batch_size=args.batch_size, model_name=args.model, verbose=not args.quiet
-    )
-
-    if not args.quiet:
-        if total == 0:
-            print("No new embeddings needed to be processed.")
-        else:
-            print("Embedding processing completed successfully!")
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        print(f"Error: {e}")
+        print("Please check if Ollama is running and accessible.")
+        sys.exit(1)

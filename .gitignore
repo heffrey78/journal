@@ -45,3 +45,7 @@ htmlcov/
 
 # Windows
 Thumbs.db
+
+#Data
+journal.db
+journal_data/

@@ -113,25 +113,23 @@ class LLMService:
                     }
                 ],
                 format={
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "summary": {
-                                "type": "string",
-                                "description": "A concise summary of the journal entry",
-                            },
-                            "key_topics": {
-                                "type": "array",
-                                "description": "List of key topics from the entry",
-                                "items": {"type": "string"},
-                            },
-                            "mood": {
-                                "type": "string",
-                                "description": "The overall mood of the entry",
-                            },
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "A concise summary of the journal entry",
                         },
-                        "required": ["summary", "key_topics", "mood"],
-                    }
+                        "key_topics": {
+                            "type": "array",
+                            "description": "List of key topics from the entry",
+                            "items": {"type": "string"},
+                        },
+                        "mood": {
+                            "type": "string",
+                            "description": "The overall mood of the entry",
+                        },
+                    },
+                    "required": ["summary", "key_topics", "mood"],
                 },
             )
 

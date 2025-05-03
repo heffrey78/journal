@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime, timedelta
+import sys
 
 BASE_URL = "http://localhost:8000"
 
@@ -127,5 +128,54 @@ def test_enhanced_api():
     print("\nEnhanced API testing complete!")
 
 
+def test_summarize_entry(entry_id: str):
+    """Test the entry summarization endpoint"""
+    print(f"Testing entry summarization for entry ID: {entry_id}")
+
+    url = f"{BASE_URL}/entries/{entry_id}/summarize"
+    response = requests.post(url)
+
+    print(f"Status code: {response.status_code}")
+    if response.status_code == 200:
+        summary = response.json()
+        print("\n=== ENTRY SUMMARY ===")
+        print(f"Summary: {summary['summary']}")
+        print("\nKey Topics:")
+        for topic in summary["key_topics"]:
+            print(f"- {topic}")
+        print(f"\nMood: {summary['mood']}")
+        return True
+    else:
+        print(f"Error: {response.text}")
+        return False
+
+
+def get_latest_entry() -> str:
+    """Get the ID of the latest entry for testing"""
+    url = f"{BASE_URL}/entries/"
+    response = requests.get(url, params={"limit": 1})
+
+    if response.status_code == 200:
+        entries = response.json()
+        if entries:
+            return entries[0]["id"]
+    return None
+
+
 if __name__ == "__main__":
-    test_enhanced_api()
+    print("=== Testing Journal API Enhanced Features ===\n")
+
+    # Use entry ID from command line argument or get latest entry
+    if len(sys.argv) > 1:
+        entry_id = sys.argv[1]
+        print(f"Using provided entry ID: {entry_id}")
+    else:
+        print("Getting latest entry ID...")
+        entry_id = get_latest_entry()
+        if not entry_id:
+            print("No entries found to test with. Please create an entry first.")
+            sys.exit(1)
+        print(f"Using latest entry ID: {entry_id}")
+
+    # Run test for summarization
+    test_summarize_entry(entry_id)

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.models import JournalEntry
 from app.storage import StorageManager
+from app.llm_service import LLMService, EntrySummary
 
 app = FastAPI(
     title="Journal API", description="API for managing journal entries", version="0.1.0"
@@ -12,6 +13,7 @@ app = FastAPI(
 
 # Create a singleton storage manager
 storage_manager = None
+llm_service = None
 
 
 def get_storage() -> StorageManager:
@@ -20,6 +22,16 @@ def get_storage() -> StorageManager:
     if storage_manager is None:
         storage_manager = StorageManager()
     return storage_manager
+
+
+def get_llm_service() -> LLMService:
+    """Dependency to get the LLM service instance"""
+    global llm_service, storage_manager
+    if llm_service is None:
+        if storage_manager is None:
+            storage_manager = StorageManager()
+        llm_service = LLMService(storage_manager=storage_manager)
+    return llm_service
 
 
 class EntryUpdate(BaseModel):
@@ -213,6 +225,35 @@ async def get_tags(storage: StorageManager = Depends(get_storage)):
         return storage.get_all_tags()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get tags: {str(e)}")
+
+
+@app.post("/entries/{entry_id}/summarize", response_model=EntrySummary, tags=["llm"])
+async def summarize_entry(
+    entry_id: str,
+    storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """
+    Generate a structured summary of a journal entry using LLM.
+
+    Returns:
+        An EntrySummary object containing a summary, key topics, and detected mood
+    """
+    try:
+        # Get the entry from storage
+        entry = storage.get_entry(entry_id)
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+
+        # Use the LLM service to generate the summary
+        summary = llm.summarize_entry(entry.content)
+        return summary
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate entry summary: {str(e)}"
+        )
 
 
 @app.get("/tags/{tag}/entries", response_model=List[JournalEntry], tags=["tags"])

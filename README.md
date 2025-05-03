@@ -64,6 +64,73 @@ To enable semantic search:
    ```
 3. Use semantic search in the UI or API
 
+> **Important**: Semantic search requires embeddings to be generated for your journal entries. New entries are initially stored without embeddings, and the `process_embeddings.py` script must be run to generate these embeddings. If semantic search isn't returning expected results, make sure you've run this script after creating new entries.
+
+### How Semantic Search Works
+
+Unlike traditional text search (which looks for exact keyword matches), semantic search understands the meaning and context of your query:
+
+- **Text Search**: Finds entries containing the exact words you searched for
+- **Semantic Search**: Finds entries related to your search concept, even if they use different words
+
+For example, searching for "food" might return entries about "cooking", "recipes", or "dinner" even if they don't contain the word "food".
+
+The process works by:
+1. Converting text into numerical vectors (embeddings) that represent meaning
+2. Finding entries with similar vector representations to your search query
+3. Ranking results by similarity score
+
+You can toggle between text search and semantic search in the UI by checking the "Use semantic search" option.
+
+## Advanced Search Options
+
+The Journal App includes powerful search capabilities that can be combined to find exactly what you're looking for:
+
+### Search Types
+
+1. **Text Search**: Finds entries that contain specific keywords in their title, content, or tags.
+   - Example: Searching for "finance" will find entries with that word in title, content, or tags.
+
+2. **Semantic Search**: Finds entries that are conceptually related to your query, even if they don't contain the exact words.
+   - Example: Searching for "financial planning" might find entries about "savings accounts" or "budget".
+
+### Filters
+
+You can combine your search with filters:
+
+- **Date Range**: Filter entries by date, using either "from" date, "to" date, or both.
+- **Tags**: Filter entries that have specific tags.
+
+### Using Advanced Search
+
+From the UI:
+1. Click "Search" in the navigation
+2. Enter your search terms
+3. Check "Use semantic search" if desired
+4. Click "Show advanced options" to access date and tag filters
+5. Apply filters as needed and search
+
+From the API:
+```
+POST /entries/search/
+{
+  "query": "your search terms",
+  "semantic": true,
+  "date_from": "2025-05-01",
+  "date_to": "2025-05-31",
+  "tags": ["work", "ideas"]
+}
+```
+
+### Keeping Semantic Search Updated
+
+Remember to run the embeddings generator after adding new entries:
+```
+python update_embeddings.py
+```
+
+This will index any new entries into the semantic search engine.
+
 ## API Endpoints
 
 - `POST /entries/`: Create a new journal entry

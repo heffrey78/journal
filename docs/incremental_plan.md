@@ -136,7 +136,14 @@ git commit -m "Enhance UI with semantic search toggle and advanced options"
 ```
 - Add semantic search toggle to search UI
 - Implement search by date range and tags
-- Test advanced search functionality
+- Create advanced search form with expanded options
+- Modify search endpoint to support combined filtering
+- Add visual indicators for search method in use
+- Create utility for embeddings generation
+- Add script to generate embeddings for existing entries
+- Implement error handling for semantic search failures
+- Update documentation with search usage examples
+- Test advanced search functionality with various query combinations
 
 ## Phase 7: Refinement & Quality Assurance
 

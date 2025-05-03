@@ -84,19 +84,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function searchEntries(query, semantic = false) {
+  async function searchEntries(query, options = {}) {
     try {
-      const url = semantic
-        ? `/entries/search/?query=${encodeURIComponent(query)}&semantic=true`
-        : `/entries/search/?query=${encodeURIComponent(query)}`;
+      // Handle empty query when using filters
+      const hasFilters = options.date_from || options.date_to || (options.tags && options.tags.length > 0);
+      const queryParam = query.trim() ? query : hasFilters ? "" : " "; // Use empty string for filter-only searches
 
-      const response = await fetch(url);
+      // Handle basic search vs advanced search
+      if (Object.keys(options).length <= 1 && options.semantic !== undefined) {
+        // Simple search with only semantic option
+        const url = options.semantic
+          ? `/entries/search/?query=${encodeURIComponent(queryParam)}&semantic=true`
+          : `/entries/search/?query=${encodeURIComponent(queryParam)}`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Error searching entries: ${response.status}`);
+        }
+        return await response.json();
+      } else {
+        // Advanced search with POST
+        const searchParams = {
+          query: queryParam,
+          ...options
+        };
+
+        const response = await fetch('/entries/search/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(searchParams),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error searching entries: ${response.status}`);
+        }
+        return await response.json();
+      }
+    } catch (error) {
+      console.error('Failed to search entries:', error);
+      return [];
+    }
+  }
+
+  async function fetchAllTags() {
+    try {
+      const response = await fetch('/tags/');
       if (!response.ok) {
-        throw new Error(`Error searching entries: ${response.status}`);
+        throw new Error(`Error fetching tags: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
-      console.error('Failed to search entries:', error);
+      console.error('Failed to fetch tags:', error);
       return [];
     }
   }
@@ -296,21 +336,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function performSearch(query, semantic = false) {
+  async function performSearch(query, options = {}) {
     searchResults.innerHTML = '<p class="loading-placeholder">Searching...</p>';
 
-    // If query is empty, show error
-    if (!query.trim()) {
-      searchResults.innerHTML = '<p>Please enter search terms.</p>';
+    // Check if we have any search criteria (either query or filters)
+    const hasFilters = options.date_from || options.date_to || (options.tags && options.tags.length > 0);
+
+    // If no query and no filters, show error
+    if (!query.trim() && !hasFilters) {
+      searchResults.innerHTML = '<p>Please enter search terms or select filters.</p>';
       return;
     }
 
-    const results = await searchEntries(query, semantic);
+    const results = await searchEntries(query, options);
 
-    // Add heading to show search terms and type
-    const searchTypeText = semantic ? 'semantic search' : 'text search';
+    // Create appropriate heading based on search criteria
+    let headingText = '';
+    if (query.trim()) {
+      // If there's a query, show it in the heading
+      const searchTypeText = options.semantic ? 'semantic search' : 'text search';
+      headingText = `Search Results for "${query}" (${searchTypeText})`;
+    } else {
+      // If only using filters, show that in the heading
+      headingText = "Filtered Journal Entries";
+    }
+
+    // Generate filter information display
+    let filterInfo = '';
+    if (options.date_from || options.date_to) {
+      const dateRange = [];
+      if (options.date_from) dateRange.push(`from ${options.date_from}`);
+      if (options.date_to) dateRange.push(`to ${options.date_to}`);
+      filterInfo += `<p>Date range: ${dateRange.join(' ')}</p>`;
+    }
+
+    if (options.tags && options.tags.length) {
+      filterInfo += `<p>Tags: ${options.tags.join(', ')}</p>`;
+    }
+
     searchResults.innerHTML = `
-      <h3>Search Results for "${query}" (${searchTypeText})</h3>
+      <h3>${headingText}</h3>
+      ${filterInfo}
       <div id="search-entries-container"></div>
     `;
 
@@ -339,6 +405,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Load tags for search dropdown
+  async function loadSearchTags() {
+    const tagSelect = document.getElementById('search-tags');
+    if (!tagSelect) return;
+
+    // Clear existing options
+    tagSelect.innerHTML = '';
+
+    // Add loading option
+    const loadingOption = document.createElement('option');
+    loadingOption.textContent = 'Loading tags...';
+    loadingOption.disabled = true;
+    loadingOption.selected = true;
+    tagSelect.appendChild(loadingOption);
+
+    // Fetch tags
+    const tags = await fetchAllTags();
+
+    // Remove loading option
+    tagSelect.removeChild(loadingOption);
+
+    // Add tags as options
+    if (tags.length === 0) {
+      const noTagsOption = document.createElement('option');
+      noTagsOption.textContent = 'No tags available';
+      noTagsOption.disabled = true;
+      tagSelect.appendChild(noTagsOption);
+    } else {
+      tags.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag;
+        option.textContent = tag;
+        tagSelect.appendChild(option);
+      });
+    }
+  }
+
   // Event Listeners for Navigation
   newEntryBtn.addEventListener('click', (e) => {
     e.preventDefault();
@@ -356,6 +459,15 @@ document.addEventListener('DOMContentLoaded', () => {
   searchBtn.addEventListener('click', (e) => {
     e.preventDefault();
     showSection(searchSection);
+
+    // If advanced search is visible and we haven't loaded tags yet
+    const advancedSearchOptions = document.getElementById('advanced-search-options');
+    const tagSelect = document.getElementById('search-tags');
+
+    if (advancedSearchOptions && !advancedSearchOptions.classList.contains('hidden') &&
+        tagSelect && tagSelect.options.length <= 1) {
+      loadSearchTags();
+    }
   });
 
   welcomeNewEntryBtn.addEventListener('click', () => {
@@ -363,6 +475,27 @@ document.addEventListener('DOMContentLoaded', () => {
     journalForm.reset();
     showSection(entryFormSection);
   });
+
+  // Advanced search toggle
+  const toggleAdvancedSearch = document.getElementById('toggle-advanced-search');
+  const advancedSearchOptions = document.getElementById('advanced-search-options');
+
+  if (toggleAdvancedSearch && advancedSearchOptions) {
+    toggleAdvancedSearch.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isHidden = advancedSearchOptions.classList.contains('hidden');
+
+      if (isHidden) {
+        advancedSearchOptions.classList.remove('hidden');
+        toggleAdvancedSearch.textContent = 'Hide advanced options';
+        // Load tags when showing advanced options
+        loadSearchTags();
+      } else {
+        advancedSearchOptions.classList.add('hidden');
+        toggleAdvancedSearch.textContent = 'Show advanced options';
+      }
+    });
+  }
 
   // Form submissions
   journalForm.addEventListener('submit', async (e) => {
@@ -419,11 +552,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Enhanced search form submission
   searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const searchQuery = document.getElementById('search-query').value;
     const isSemanticSearch = document.getElementById('semantic-search')?.checked || false;
-    performSearch(searchQuery, isSemanticSearch);
+
+    // Get advanced search options
+    const dateFrom = document.getElementById('date-from')?.value || null;
+    const dateTo = document.getElementById('date-to')?.value || null;
+
+    // Get selected tags (multiple select)
+    const tagsSelect = document.getElementById('search-tags');
+    const selectedTags = tagsSelect ?
+      Array.from(tagsSelect.selectedOptions).map(option => option.value) :
+      [];
+
+    // Build search options
+    const searchOptions = {
+      semantic: isSemanticSearch
+    };
+
+    if (dateFrom) searchOptions.date_from = dateFrom;
+    if (dateTo) searchOptions.date_to = dateTo;
+    if (selectedTags.length > 0) searchOptions.tags = selectedTags;
+
+    performSearch(searchQuery, searchOptions);
   });
 
   // Entry Detail Navigation

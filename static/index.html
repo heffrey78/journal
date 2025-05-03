@@ -64,13 +64,36 @@
                 <h2>Search Entries</h2>
                 <form id="search-form">
                     <div class="form-group">
-                        <input type="text" id="search-query" name="query" placeholder="Enter search terms..." required>
+                        <input type="text" id="search-query" name="query" placeholder="Enter search terms (optional when using filters)...">
                         <div class="search-options">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="semantic-search" name="semantic">
                                 Use semantic search (powered by Ollama)
                             </label>
+                            <a href="#" id="toggle-advanced-search">Show advanced options</a>
                         </div>
+
+                        <!-- Advanced search options (initially hidden) -->
+                        <div id="advanced-search-options" class="hidden">
+                            <div class="date-range">
+                                <div class="form-group">
+                                    <label for="date-from">From date:</label>
+                                    <input type="date" id="date-from" name="date_from">
+                                </div>
+                                <div class="form-group">
+                                    <label for="date-to">To date:</label>
+                                    <input type="date" id="date-to" name="date_to">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="search-tags">Filter by tags:</label>
+                                <select id="search-tags" name="tags" multiple>
+                                    <!-- Tags will be loaded dynamically -->
+                                </select>
+                                <small>Hold Ctrl/Cmd to select multiple tags</small>
+                            </div>
+                        </div>
+
                         <button type="submit" class="btn">Search</button>
                     </div>
                 </form>

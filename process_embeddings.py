@@ -22,11 +22,12 @@ from app.llm_service import LLMService
 
 def process_all_embeddings(batch_size=10, model_name="nomic-embed-text:latest"):
     """Process all entries without embeddings in batches"""
-    print(f"Processing embeddings using model: {model_name}")
+    print(f"Processing embeddings with batch size: {batch_size}")
+    print(f"Using embedding model: {model_name}")
 
     # Initialize services
     storage = StorageManager()
-    llm_service = LLMService(model_name=model_name, storage_manager=storage)
+    llm_service = LLMService(embedding_model=model_name, storage_manager=storage)
 
     # Process in batches until all are done
     total_processed = 0

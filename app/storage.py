@@ -490,31 +490,33 @@ class StorageManager:
         Returns:
             List of JournalEntry objects that match the query
         """
+        # If query is empty, return entries that match other filters
+        if not query.strip():
+            return self.get_entries(
+                limit=100,  # Higher limit for empty queries
+                offset=0,
+                date_from=date_from,
+                date_to=date_to,
+                tags=tags,
+            )
+
         entries = []
         conn = sqlite3.connect(self.db_path)
         conn.create_function("LOWER", 1, lambda x: x.lower() if x else None)
         cursor = conn.cursor()
+
         try:
-            query_parts = [
-                """
-                SELECT id FROM entries
-                WHERE (LOWER(title) LIKE ? OR id IN (
-                    SELECT id FROM entries WHERE EXISTS (
-                        SELECT 1 FROM json_each(tags)
-                        WHERE LOWER(json_each.value) LIKE ?
-                    )
-                ))
-                """
-            ]
-            params = [f"%{query.lower()}%", f"%{query.lower()}%"]
+            # Get all entries
+            params = []
+            where_clauses = []
 
             # Add date range filter if provided
             if date_from:
-                query_parts.append("AND created_at >= ?")
+                where_clauses.append("created_at >= ?")
                 params.append(date_from.isoformat())
 
             if date_to:
-                query_parts.append("AND created_at <= ?")
+                where_clauses.append("created_at <= ?")
                 params.append(date_to.isoformat())
 
             # Add tag filter if provided
@@ -523,57 +525,55 @@ class StorageManager:
                 for tag in tags:
                     tag_conditions.append("tags LIKE ?")
                     params.append(f"%{json.dumps(tag)[1:-1]}%")
-                query_parts.append(f"AND ({' OR '.join(tag_conditions)})")
+                if tag_conditions:
+                    where_clauses.append(f"({' OR '.join(tag_conditions)})")
 
-            query_parts.append("ORDER BY created_at DESC")
+            # Build query to get all entries meeting filter criteria
+            query_sql = "SELECT id, file_path, title, tags FROM entries"
+            if where_clauses:
+                query_sql += " WHERE " + " AND ".join(where_clauses)
 
-            cursor.execute(" ".join(query_parts), tuple(params))
+            # Execute query
+            cursor.execute(query_sql, tuple(params))
             rows = cursor.fetchall()
 
-            # Store matching entries by ID to prevent duplicates
-            matching_ids = {row[0] for row in rows}
+            # Process search terms
+            search_terms = query.lower().split()
 
-            # For content search, we need to check the files directly
-            cursor.execute("SELECT id, file_path FROM entries")
-            all_entries = cursor.fetchall()
+            for row in rows:
+                entry_id, file_path, title, tags_json = row
 
-            for entry_id, file_path in all_entries:
-                # Skip entries we've already matched by title or tag
-                if entry_id in matching_ids:
+                # Check title for matches
+                if any(term in title.lower() for term in search_terms):
                     entry = self.get_entry(entry_id)
                     if entry:
                         entries.append(entry)
-                    continue
+                        continue
 
-                # Check content
+                # Check tags for matches
+                if tags_json:
+                    entry_tags = json.loads(tags_json)
+                    if any(
+                        any(term in tag.lower() for term in search_terms)
+                        for tag in entry_tags
+                    ):
+                        entry = self.get_entry(entry_id)
+                        if entry:
+                            entries.append(entry)
+                            continue
+
+                # Check file content
                 if os.path.exists(file_path):
                     with open(file_path, "r") as f:
-                        content = f.read()
-                        if query.lower() in content.lower():
-                            # Check if entry matches date and tag filters
+                        content = f.read().lower()
+                        if any(term in content for term in search_terms):
                             entry = self.get_entry(entry_id)
-                            if not entry:
-                                continue
-
-                            include = True
-
-                            # Filter by date range
-                            if date_from and entry.created_at < date_from:
-                                include = False
-                            if date_to and entry.created_at > date_to:
-                                include = False
-
-                            # Filter by tags
-                            if tags and include:
-                                if not any(tag in entry.tags for tag in tags):
-                                    include = False
-
-                            if include:
+                            if entry:
                                 entries.append(entry)
+
+            return entries
         finally:
             conn.close()
-
-        return entries
 
     def get_entry_by_title(self, title: str) -> Optional[JournalEntry]:
         """

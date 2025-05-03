@@ -30,16 +30,19 @@ class LLMService:
     def __init__(
         self,
         model_name: str = "qwen3:latest",
+        embedding_model: str = "nomic-embed-text:latest",
         storage_manager: Optional[StorageManager] = None,
     ):
         """
         Initialize the LLM service.
 
         Args:
-            model_name: Ollama model to use
+            model_name: Ollama model to use for generation
+            embedding_model: Ollama model to use for embeddings
             storage_manager: Optional reference to the storage manager
         """
         self.model_name = model_name
+        self.embedding_model = embedding_model
         self.storage_manager = storage_manager
 
     def get_embedding(self, text: str) -> np.ndarray:
@@ -53,12 +56,14 @@ class LLMService:
             Numpy array containing the embedding vector
         """
         try:
-            response = ollama.embeddings(model=self.model_name, prompt=text)
+            response = ollama.embeddings(model=self.embedding_model, prompt=text)
             return np.array(response["embedding"], dtype=np.float32)
         except Exception as e:
             print(f"Error getting embedding: {e}")
             # Return empty embedding as fallback
-            return np.zeros(4096, dtype=np.float32)
+            return np.zeros(
+                768, dtype=np.float32
+            )  # Use consistent size for nomic-embed-text model
 
     def process_entries_without_embeddings(self, limit: int = 10) -> int:
         """

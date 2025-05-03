@@ -28,6 +28,10 @@ class StorageManager:
         # Initialize SQLite for metadata
         self._init_sqlite()
 
+        # Entry cache for improved performance
+        self._entry_cache = {}
+        self._cache_size = 50  # Maximum number of entries to cache
+
     def _init_sqlite(self):
         """Initialize SQLite database with the necessary schema."""
         conn = sqlite3.connect(self.db_path)
@@ -57,6 +61,15 @@ class StorageManager:
             FOREIGN KEY (entry_id) REFERENCES entries(id)
         )
         """
+        )
+
+        # Create index for faster vector queries
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vectors_entry_id ON vectors(entry_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vectors_has_embedding"
+            " ON vectors(embedding) WHERE embedding IS NOT NULL"
         )
 
         conn.commit()
@@ -132,7 +145,10 @@ class StorageManager:
 
     def _chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
         """
-        Split text into chunks for vector indexing.
+        Split text into sentence-aware chunks for vector indexing.
+
+        This optimized version respects sentence and paragraph boundaries when possible,
+        which improves the semantic coherence of chunks and leads to better searches.
 
         Args:
             text: The text to chunk
@@ -141,24 +157,94 @@ class StorageManager:
         Returns:
             List of text chunks
         """
-        words = text.split()
+        # Split by paragraphs first (double newlines)
+        paragraphs = text.split("\n\n")
         chunks = []
         current_chunk = []
         current_length = 0
 
-        for word in words:
-            if current_length + len(word) > chunk_size:
-                chunks.append(" ".join(current_chunk))
-                current_chunk = [word]
-                current_length = len(word)
-            else:
-                current_chunk.append(word)
-                current_length += len(word) + 1  # +1 for space
+        for paragraph in paragraphs:
+            # If paragraph is too big on its own, we need to split it
+            if len(paragraph) > chunk_size * 1.5:
+                # Split into sentences
+                sentences = self._split_into_sentences(paragraph)
 
+                for sentence in sentences:
+                    sentence_len = len(sentence)
+
+                    # Handle very long sentences
+                    if sentence_len > chunk_size:
+                        # If current chunk has content, complete it first
+                        if current_chunk:
+                            chunks.append(" ".join(current_chunk))
+                            current_chunk = []
+                            current_length = 0
+
+                        # Split the long sentence into word-based chunks
+                        words = sentence.split()
+                        word_chunk = []
+                        word_chunk_length = 0
+
+                        for word in words:
+                            if word_chunk_length + len(word) + 1 > chunk_size:
+                                chunks.append(" ".join(word_chunk))
+                                word_chunk = [word]
+                                word_chunk_length = len(word)
+                            else:
+                                word_chunk.append(word)
+                                word_chunk_length += len(word) + 1
+
+                        if word_chunk:
+                            chunks.append(" ".join(word_chunk))
+
+                    # Normal sentence handling
+                    elif current_length + sentence_len + 1 > chunk_size:
+                        # Complete current chunk and start a new one with this sentence
+                        chunks.append(" ".join(current_chunk))
+                        current_chunk = [sentence]
+                        current_length = sentence_len
+                    else:
+                        # Add sentence to current chunk
+                        current_chunk.append(sentence)
+                        current_length += sentence_len + 1
+            else:
+                # Try to add the entire paragraph
+                if current_length + len(paragraph) + 2 > chunk_size and current_chunk:
+                    # Complete the current chunk first
+                    chunks.append(" ".join(current_chunk))
+                    current_chunk = [paragraph]
+                    current_length = len(paragraph)
+                else:
+                    # Add paragraph to current chunk
+                    if current_chunk:  # Add a separator if joining paragraphs
+                        current_chunk.append("\n\n" + paragraph)
+                        current_length += len(paragraph) + 2
+                    else:
+                        current_chunk.append(paragraph)
+                        current_length += len(paragraph)
+
+        # Add the last chunk if it has content
         if current_chunk:
-            chunks.append(" ".join(current_chunk))
+            chunks.append(" ".join(current_chunk).replace("\n\n ", "\n\n"))
 
         return chunks
+
+    def _split_into_sentences(self, text: str) -> List[str]:
+        """
+        Split a text into sentences.
+
+        Args:
+            text: The text to split into sentences
+
+        Returns:
+            List of sentences
+        """
+        # Basic sentence splitting - sentence ending punctuation
+        import re
+
+        sentence_endings = r"(?<=[.!?])\s+"
+        sentences = re.split(sentence_endings, text)
+        return [s.strip() for s in sentences if s.strip()]
 
     def update_vectors_with_embeddings(
         self, entry_id: str, embeddings: Dict[int, np.ndarray]
@@ -233,14 +319,20 @@ class StorageManager:
             conn.close()
 
     def semantic_search(
-        self, query_embedding: np.ndarray, limit: int = 5
+        self,
+        query_embedding: np.ndarray,
+        limit: int = 5,
+        offset: int = 0,
+        batch_size: int = 1000,
     ) -> List[Dict[str, Any]]:
         """
-        Search for similar entries using vector embeddings.
+        Search for similar entries using vector embeddings with batched processing.
 
         Args:
             query_embedding: The embedding vector to search with
             limit: Maximum number of results to return
+            offset: Number of entries to skip for pagination
+            batch_size: Size of batches for processing vectors
 
         Returns:
             List of dictionaries with search results
@@ -248,40 +340,67 @@ class StorageManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         try:
-            cursor.execute(
-                "SELECT id, entry_id, text, embedding "
-                "FROM vectors WHERE embedding IS NOT NULL"
-            )
-            results = []
+            # Get total count for batching
+            cursor.execute("SELECT COUNT(*) FROM vectors WHERE embedding IS NOT NULL")
+            total_vectors = cursor.fetchone()[0]
 
-            for row in cursor.fetchall():
-                vector_id, entry_id, text, embedding_bytes = row
-                if embedding_bytes:  # Skip entries without embeddings
-                    # Convert bytes back to numpy array
-                    db_embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+            all_results = []
 
-                    # Calculate cosine similarity
-                    similarity = float(
-                        cosine_similarity([query_embedding], [db_embedding])[0][0]
-                    )
+            # Process in batches to avoid memory issues with large datasets
+            for batch_offset in range(0, total_vectors, batch_size):
+                cursor.execute(
+                    """
+                    SELECT v.id, v.entry_id, v.text, v.embedding, e.title
+                    FROM vectors v
+                    JOIN entries e ON v.entry_id = e.id
+                    WHERE v.embedding IS NOT NULL
+                    LIMIT ? OFFSET ?
+                    """,
+                    (batch_size, batch_offset),
+                )
 
-                    # Get the full entry
-                    entry = self.get_entry(entry_id)
+                batch_results = []
+                for row in cursor.fetchall():
+                    vector_id, entry_id, text, embedding_bytes, title = row
+                    if embedding_bytes:
+                        # Convert bytes back to numpy array
+                        db_embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
 
-                    results.append(
-                        {
-                            "vector_id": vector_id,
-                            "entry_id": entry_id,
-                            "title": entry.title if entry else "Unknown",
-                            "text": text,
-                            "similarity": similarity,
-                            "entry": entry,
-                        }
-                    )
+                        # Calculate cosine similarity
+                        similarity = float(
+                            cosine_similarity([query_embedding], [db_embedding])[0][0]
+                        )
 
-            # Sort by similarity (highest first)
-            results.sort(key=lambda x: x["similarity"], reverse=True)
-            return results[:limit]
+                        batch_results.append(
+                            {
+                                "vector_id": vector_id,
+                                "entry_id": entry_id,
+                                "title": title,
+                                "text": text,
+                                "similarity": similarity,
+                            }
+                        )
+
+                all_results.extend(batch_results)
+
+            # Sort all results by similarity
+            all_results.sort(key=lambda x: x["similarity"], reverse=True)
+
+            # Apply pagination
+            # fmt: off
+            paginated_results = all_results[offset: offset + limit]
+            # fmt: on
+
+            # Now fetch the complete entries only for the paginated results
+            # This avoids loading full entries for all matches
+            result_with_entries = []
+            for result in paginated_results:
+                entry = self.get_entry(result["entry_id"])
+                if entry:
+                    result["entry"] = entry
+                    result_with_entries.append(result)
+
+            return result_with_entries
         finally:
             conn.close()
 
@@ -330,6 +449,10 @@ class StorageManager:
         Returns:
             JournalEntry object if found, None otherwise
         """
+        # Check cache first
+        if entry_id in self._entry_cache:
+            return self._entry_cache[entry_id]
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         try:
@@ -358,7 +481,7 @@ class StorageManager:
                 content = content.strip()
 
             # Create JournalEntry object
-            return JournalEntry(
+            entry = JournalEntry(
                 id=id,
                 title=title,
                 content=content,
@@ -366,6 +489,13 @@ class StorageManager:
                 updated_at=(datetime.fromisoformat(updated_at) if updated_at else None),
                 tags=json.loads(tags_json) if tags_json else [],
             )
+
+            # Add to cache
+            if len(self._entry_cache) >= self._cache_size:
+                self._entry_cache.pop(next(iter(self._entry_cache)))
+            self._entry_cache[entry_id] = entry
+
+            return entry
         finally:
             conn.close()
 

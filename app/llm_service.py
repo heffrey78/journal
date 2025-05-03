@@ -253,13 +253,17 @@ class LLMService:
             logger.error(f"Error summarizing entry: {e}")
             raise SummarizationError(f"Failed to summarize entry: {e}")
 
-    def semantic_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def semantic_search(
+        self, query: str, limit: int = 5, offset: int = 0, batch_size: int = 1000
+    ) -> List[Dict[str, Any]]:
         """
-        Perform semantic search on journal entries.
+        Perform semantic search on journal entries with pagination support.
 
         Args:
             query: The search query text
             limit: Maximum number of results to return
+            offset: Number of results to skip for pagination
+            batch_size: Size of batches for processing vectors
 
         Returns:
             List of search results
@@ -273,7 +277,9 @@ class LLMService:
         # Generate embedding for the query
         query_embedding = self.get_embedding(query)
 
-        # Search using the storage manager
-        results = self.storage_manager.semantic_search(query_embedding, limit)
+        # Search using the storage manager's optimized method
+        results = self.storage_manager.semantic_search(
+            query_embedding, limit=limit, offset=offset, batch_size=batch_size
+        )
 
         return results

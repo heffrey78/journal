@@ -56,6 +56,8 @@ class SearchParams(BaseModel):
     date_to: Optional[datetime] = None
     tags: Optional[List[str]] = None
     semantic: bool = False  # Toggle for semantic search
+    limit: int = Field(default=10, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
 
 
 class TagCount(BaseModel):
@@ -261,17 +263,15 @@ async def advanced_search(
     """
     try:
         if search_params.semantic:
-            # Use semantic search with LLM service
-            results = llm.semantic_search(search_params.query)
+            # Use semantic search with LLM service with pagination
+            results = llm.semantic_search(
+                search_params.query,
+                limit=search_params.limit,
+                offset=search_params.offset,
+            )
 
-            # Convert results to list of entries
-            entries = []
-            for result in results:
-                if "entry_id" in result:
-                    entry = storage.get_entry(result["entry_id"])
-                    if entry:
-                        entries.append(entry)
-            return entries
+            # Results already contain the full entries
+            return [result["entry"] for result in results if "entry" in result]
         else:
             # Regular text search
             entries = storage.text_search(
@@ -280,7 +280,14 @@ async def advanced_search(
                 date_to=search_params.date_to,
                 tags=search_params.tags,
             )
-            return entries
+            # Apply manual pagination for consistency
+            # fmt: off
+            return_entries = entries[
+                search_params.offset: search_params.offset + search_params.limit
+            ]
+            # fmt: on
+            # Return the paginated entries
+            return return_entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
@@ -289,6 +296,8 @@ async def advanced_search(
 async def simple_search(
     query: str = Query(..., min_length=1),
     semantic: bool = False,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     storage: StorageManager = Depends(get_storage),
     llm: LLMService = Depends(get_llm_service),
 ):
@@ -299,21 +308,21 @@ async def simple_search(
     """
     try:
         if semantic:
-            # Use semantic search with LLM service
-            results = llm.semantic_search(query)
+            # Use semantic search with LLM service with pagination
+            results = llm.semantic_search(query, limit=limit, offset=offset)
 
-            # Convert results to list of entries
-            entries = []
-            for result in results:
-                if "entry_id" in result:
-                    entry = storage.get_entry(result["entry_id"])
-                    if entry:
-                        entries.append(entry)
-            return entries
+            # Results already contain the full entries
+            return [result["entry"] for result in results if "entry" in result]
         else:
             # Regular text search
             entries = storage.text_search(query)
-            return entries
+            # Apply manual pagination for consistency
+            # fmt: off
+            return_entries = entries[
+                offset: offset + limit
+            ]
+            # fmt: on
+            return return_entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 

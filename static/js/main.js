@@ -1,61 +1,58 @@
 // DOM Elements
 document.addEventListener('DOMContentLoaded', () => {
   // Navigation elements
-  const navHome = document.getElementById('nav-home');
-  const navNew = document.getElementById('nav-new');
-  const navList = document.getElementById('nav-list');
-  const navSearch = document.getElementById('nav-search');
-  const startButton = document.getElementById('start-button');
+  const newEntryBtn = document.getElementById('new-entry-btn');
+  const viewEntriesBtn = document.getElementById('view-entries-btn');
+  const searchBtn = document.getElementById('search-btn');
+  const welcomeNewEntryBtn = document.getElementById('welcome-new-entry');
 
   // Sections
   const welcomeSection = document.getElementById('welcome');
-  const newEntrySection = document.getElementById('new-entry');
+  const entryFormSection = document.getElementById('entry-form');
   const entryListSection = document.getElementById('entry-list');
   const entryDetailSection = document.getElementById('entry-detail');
-  const searchSection = document.getElementById('search');
+  const searchSection = document.getElementById('search-section');
 
   // Forms
-  const entryForm = document.getElementById('entry-form');
+  const journalForm = document.getElementById('journal-form');
   const searchForm = document.getElementById('search-form');
 
   // Navigation functions
   function showSection(section) {
     // Hide all sections
-    [welcomeSection, newEntrySection, entryListSection, entryDetailSection, searchSection]
+    [welcomeSection, entryFormSection, entryListSection, entryDetailSection, searchSection]
       .forEach(s => s.classList.remove('active'));
+    [welcomeSection, entryFormSection, entryListSection, entryDetailSection, searchSection]
+      .forEach(s => s.classList.add('hidden'));
 
     // Show the requested section
+    section.classList.remove('hidden');
     section.classList.add('active');
   }
 
   // Event Listeners for Navigation
-  navHome.addEventListener('click', (e) => {
+  newEntryBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    showSection(welcomeSection);
+    showSection(entryFormSection);
   });
 
-  navNew.addEventListener('click', (e) => {
-    e.preventDefault();
-    showSection(newEntrySection);
-  });
-
-  navList.addEventListener('click', (e) => {
+  viewEntriesBtn.addEventListener('click', (e) => {
     e.preventDefault();
     showSection(entryListSection);
     // In the future: loadEntries();
   });
 
-  navSearch.addEventListener('click', (e) => {
+  searchBtn.addEventListener('click', (e) => {
     e.preventDefault();
     showSection(searchSection);
   });
 
-  startButton.addEventListener('click', () => {
-    showSection(newEntrySection);
+  welcomeNewEntryBtn.addEventListener('click', () => {
+    showSection(entryFormSection);
   });
 
   // Form submissions - placeholders for now
-  entryForm.addEventListener('submit', (e) => {
+  journalForm.addEventListener('submit', (e) => {
     e.preventDefault();
     alert('Entry submission will be implemented in the next phase');
     // In the future: saveEntry(formData);
@@ -70,10 +67,5 @@ document.addEventListener('DOMContentLoaded', () => {
   // Entry Detail Navigation
   document.getElementById('back-to-list').addEventListener('click', () => {
     showSection(entryListSection);
-  });
-
-  document.getElementById('summarize-entry').addEventListener('click', () => {
-    alert('Summarize functionality will be implemented in a future phase');
-    // In the future: summarizeEntry(currentEntryId);
   });
 });

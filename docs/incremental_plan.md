@@ -52,14 +52,15 @@ git commit -m "Complete storage manager with get_entries and get_entry methods"
 
 ## Phase 3: Vector Search Integration
 
-### Commit 6: ChromaDB Integration
+### Commit 6: SQLite Vector Search Integration
 ```
-git commit -m "Add ChromaDB integration for vector storage"
+git commit -m "Add SQLite-based vector storage"
 ```
-- Add chromadb to requirements
-- Implement vector storage functionality in StorageManager
+- Add numpy and scikit-learn to requirements
+- Implement vector storage functionality in StorageManager using SQLite
 - Add chunking functionality for text
 - Update entry creation to include vector storage
+- Prepare for Ollama integration in Commit 8
 
 ### Commit 7: Simple Text Search
 ```
@@ -93,7 +94,7 @@ git commit -m "Implement structured outputs for journal entry analysis"
 git commit -m "Add semantic search functionality via Ollama embeddings"
 ```
 - Implement semantic_search method in LLMService
-- Connect embeddings to ChromaDB search
+- Connect embeddings to SQLite vector storage
 - Add semantic search option to search endpoint
 - Create test script for semantic searching
 

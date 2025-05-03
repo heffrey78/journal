@@ -39,7 +39,7 @@ To pass structured outputs to the model, the `format` parameter can be used in t
 
   ```
   curl -X POST http://localhost:11434/api/chat -H "Content-Type: application/json" -d '{
-  "model": "llama3.1",
+  "model": "qwen3:latest",
   "messages": [{"role": "user", "content": "Tell me about Canada."}],
   "stream": false,
   "format": {
@@ -100,7 +100,7 @@ To pass structured outputs to the model, the `format` parameter can be used in t
       'content': 'Tell me about Canada.',
     }
   ],
-  model='llama3.1',
+  model='qwen3:latest',
   format=Country.model_json_schema(),
   )
 
@@ -144,7 +144,7 @@ To pass structured outputs to the model, the `format` parameter can be used in t
       ''',
     }
   ],
-  model='llama3.1',
+  model='qwen3:latest',
   format=PetList.model_json_schema(),
   )
 

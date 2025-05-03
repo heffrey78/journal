@@ -1,8 +1,10 @@
 import os
 import json
 import sqlite3
+import numpy as np
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+from sklearn.metrics.pairwise import cosine_similarity
 
 from app.models import JournalEntry
 
@@ -11,7 +13,7 @@ class StorageManager:
     """
     Manages the storage of journal entries in both filesystem and SQLite database.
 
-    This implementation focuses on basic storage without vector DB functionality.
+    This implementation includes vector storage for semantic search capabilities.
     """
 
     def __init__(self, base_dir="./journal_data"):
@@ -42,6 +44,21 @@ class StorageManager:
         )
         """
         )
+
+        # Vector storage table for semantic search
+        cursor.execute(
+            """
+        CREATE TABLE IF NOT EXISTS vectors (
+            id TEXT PRIMARY KEY,
+            entry_id TEXT NOT NULL,
+            chunk_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            embedding BLOB,
+            FOREIGN KEY (entry_id) REFERENCES entries(id)
+        )
+        """
+        )
+
         conn.commit()
         conn.close()
 
@@ -68,6 +85,9 @@ class StorageManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         try:
+            # Delete any existing vectors for this entry (for updates)
+            cursor.execute("DELETE FROM vectors WHERE entry_id = ?", (entry.id,))
+
             cursor.execute(
                 "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?)",
                 (
@@ -79,11 +99,191 @@ class StorageManager:
                     json.dumps(entry.tags),
                 ),
             )
+
+            # Index the entry content for vector search
+            self._index_for_vector_search(conn, entry)
+
             conn.commit()
         finally:
             conn.close()
 
         return entry.id
+
+    def _index_for_vector_search(self, conn, entry: JournalEntry):
+        """
+        Index the entry content for vector search.
+
+        Args:
+            conn: SQLite connection
+            entry: JournalEntry to index
+        """
+        # Chunk the entry content
+        chunks = self._chunk_text(f"{entry.title}\n\n{entry.content}")
+
+        # In a real implementation with Ollama, we would get embeddings here
+        # For now, store NULL in the embedding field - will be updated later
+        cursor = conn.cursor()
+        for i, chunk in enumerate(chunks):
+            cursor.execute(
+                "INSERT INTO vectors (id, entry_id, chunk_id, text, embedding)"
+                "VALUES (?, ?, ?, ?, NULL)",
+                (f"{entry.id}_{i}", entry.id, i, chunk),
+            )
+
+    def _chunk_text(self, text: str, chunk_size: int = 500) -> List[str]:
+        """
+        Split text into chunks for vector indexing.
+
+        Args:
+            text: The text to chunk
+            chunk_size: Target size of each chunk in characters
+
+        Returns:
+            List of text chunks
+        """
+        words = text.split()
+        chunks = []
+        current_chunk = []
+        current_length = 0
+
+        for word in words:
+            if current_length + len(word) > chunk_size:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [word]
+                current_length = len(word)
+            else:
+                current_chunk.append(word)
+                current_length += len(word) + 1  # +1 for space
+
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+
+        return chunks
+
+    def update_vectors_with_embeddings(
+        self, entry_id: str, embeddings: Dict[int, np.ndarray]
+    ) -> bool:
+        """
+        Update vector embeddings for an entry.
+
+        Args:
+            entry_id: ID of the entry to update
+            embeddings: Dictionary mapping chunk_id to embedding vector
+
+        Returns:
+            True if successful, False otherwise
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            for chunk_id, embedding in embeddings.items():
+                # Convert numpy array to bytes for storage
+                embedding_bytes = embedding.astype(np.float32).tobytes()
+
+                cursor.execute(
+                    "UPDATE vectors SET embedding = ? "
+                    "WHERE entry_id = ? AND chunk_id = ?",
+                    (sqlite3.Binary(embedding_bytes), entry_id, chunk_id),
+                )
+
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error updating vectors: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_chunks_without_embeddings(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get text chunks that don't have embeddings yet.
+
+        Args:
+            limit: Maximum number of chunks to retrieve
+
+        Returns:
+            List of dictionaries with chunk information
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, entry_id, chunk_id, text
+                FROM vectors
+                WHERE embedding IS NULL
+                LIMIT ?
+                """,
+                (limit,),
+            )
+
+            chunks = []
+            for row in cursor.fetchall():
+                chunks.append(
+                    {
+                        "id": row[0],
+                        "entry_id": row[1],
+                        "chunk_id": row[2],
+                        "text": row[3],
+                    }
+                )
+
+            return chunks
+        finally:
+            conn.close()
+
+    def semantic_search(
+        self, query_embedding: np.ndarray, limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for similar entries using vector embeddings.
+
+        Args:
+            query_embedding: The embedding vector to search with
+            limit: Maximum number of results to return
+
+        Returns:
+            List of dictionaries with search results
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT id, entry_id, text, embedding "
+                "FROM vectors WHERE embedding IS NOT NULL"
+            )
+            results = []
+
+            for row in cursor.fetchall():
+                vector_id, entry_id, text, embedding_bytes = row
+                if embedding_bytes:  # Skip entries without embeddings
+                    # Convert bytes back to numpy array
+                    db_embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+
+                    # Calculate cosine similarity
+                    similarity = float(
+                        cosine_similarity([query_embedding], [db_embedding])[0][0]
+                    )
+
+                    # Get the full entry
+                    entry = self.get_entry(entry_id)
+
+                    results.append(
+                        {
+                            "vector_id": vector_id,
+                            "entry_id": entry_id,
+                            "title": entry.title if entry else "Unknown",
+                            "text": text,
+                            "similarity": similarity,
+                            "entry": entry,
+                        }
+                    )
+
+            # Sort by similarity (highest first)
+            results.sort(key=lambda x: x["similarity"], reverse=True)
+            return results[:limit]
+        finally:
+            conn.close()
 
     def update_entry(
         self, entry_id: str, update_data: Dict[str, Any]
@@ -477,8 +677,8 @@ class StorageManager:
         try:
             stats = {
                 "total_entries": 0,
-                "oldest_entry": None,
-                "newest_entry": None,
+                "oldest_entry": float("inf"),
+                "newest_entry": -float("inf"),
                 "total_tags": 0,
                 "most_used_tags": [],
             }

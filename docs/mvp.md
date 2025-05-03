@@ -1,6 +1,6 @@
 # Local Journaling Application MVP Plan
 
-Based on your requirements for a simple, local journaling application with markdown storage and vector search capabilities, I'll outline a clean, minimalist architecture using Ollama for LLM functionality.
+Based on your requirements for a simple, local journaling application with markdown storage and vector search capabilities, I'll outline a clean, minimalist architecture using Ollama for LLM functionality and SQLite for vector storage.
 
 ## Architecture Overview
 
@@ -8,15 +8,18 @@ Based on your requirements for a simple, local journaling application with markd
 ┌───────────────┐      ┌───────────────┐      ┌───────────────┐
 │   FastAPI     │◄────►│  Journal Core │◄────►│ Local Storage │
 │   Backend     │      │  Business     │      │ - Markdown    │
-│               │      │  Logic        │      │ - Vectors     │
-└───────┬───────┘      └───────────────┘      └───────────────┘
-        │                      ▲                      ▲
-        ▼                      │                      │
-┌───────────────┐              │              ┌───────────────┐
-│  Simple UI    │              └──────────────┤  Ollama LLM   │
-│  (HTML/JS)    │                             │  Service      │
-└───────────────┘                             └───────────────┘
+│               │      │  Logic        │      │ - SQLite DB   │
+└───────┬───────┘      └───────────────┘      │ - Vector      │
+        │                      ▲              │   Storage     │
+        ▼                      │              └───────────────┘
+┌───────────────┐              │                      ▲
+│  Simple UI    │              └──────────────┬───────┘
+│  (HTML/JS)    │                             │  Ollama LLM   │
+└───────────────┘                             │  Service      │
+                                              └───────────────┘
 ```
+
+The architecture leverages SQLite for both metadata storage and vector embeddings, eliminating the need for a separate vector database like ChromaDB. This approach simplifies installation, deployment, and portability while maintaining good search performance for most journal use cases.
 
 ## Core Components
 
@@ -44,8 +47,9 @@ class JournalEntry(BaseModel):
 import os
 import json
 import sqlite3
+import numpy as np
 from datetime import datetime
-import chromadb  # Lightweight vector DB
+from sklearn.metrics.pairwise import cosine_similarity
 
 class StorageManager:
     def __init__(self, base_dir="./journal_data"):
@@ -57,16 +61,13 @@ class StorageManager:
         # Ensure directories exist
         os.makedirs(self.entries_dir, exist_ok=True)
 
-        # Initialize SQLite for metadata
+        # Initialize SQLite for metadata and vector storage
         self._init_sqlite()
-
-        # Initialize ChromaDB for vector storage
-        self.vector_db = chromadb.PersistentClient(os.path.join(base_dir, "vectordb"))
-        self.collection = self.vector_db.get_or_create_collection("journal_entries")
 
     def _init_sqlite(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+        # Metadata table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS entries (
             id TEXT PRIMARY KEY,
@@ -75,6 +76,17 @@ class StorageManager:
             created_at TEXT NOT NULL,
             updated_at TEXT,
             tags TEXT
+        )
+        ''')
+        # Vector storage table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vectors (
+            id TEXT PRIMARY KEY,
+            entry_id TEXT NOT NULL,
+            chunk_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            embedding BLOB,
+            FOREIGN KEY (entry_id) REFERENCES entries(id)
         )
         ''')
         conn.commit()
@@ -101,24 +113,30 @@ class StorageManager:
             )
         )
         conn.commit()
-        conn.close()
 
-        # Index in vector database
-        self._index_in_vector_db(entry)
+        # Index chunks for vector search
+        self._index_in_vector_db(conn, entry)
+        conn.close()
 
         return entry.id
 
-    def _index_in_vector_db(self, entry):
+    def _index_in_vector_db(self, conn, entry):
         # Chunk content (simple approach for MVP)
         chunks = self._chunk_text(entry.content)
 
-        # Add to vector DB
+        # Note: In actual implementation, we would call Ollama here
+        # to get embeddings - this will be implemented in Commit 8
+        # For now, we'll just store the text chunks
+
+        cursor = conn.cursor()
         for i, chunk in enumerate(chunks):
-            self.collection.add(
-                documents=[chunk],
-                metadatas=[{"entry_id": entry.id, "chunk_id": i}],
-                ids=[f"{entry.id}_{i}"]
+            # In the final implementation, embedding will be replaced with
+            # actual vector data from Ollama
+            cursor.execute(
+                "INSERT INTO vectors (id, entry_id, chunk_id, text, embedding) VALUES (?, ?, ?, ?, NULL)",
+                (f"{entry.id}_{i}", entry.id, i, chunk)
             )
+        conn.commit()
 
     def _chunk_text(self, text, chunk_size=500):
         """Simple chunking by rough character count"""
@@ -140,6 +158,29 @@ class StorageManager:
             chunks.append(" ".join(current_chunk))
 
         return chunks
+
+    def semantic_search(self, query_embedding, limit=5):
+        """Search for similar entries using embeddings"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, entry_id, text, embedding FROM vectors WHERE embedding IS NOT NULL")
+        results = []
+
+        for row in cursor.fetchall():
+            id, entry_id, text, emb_bytes = row
+            if emb_bytes:  # Skip entries without embeddings
+                db_embedding = np.frombuffer(emb_bytes, dtype=np.float32)
+                sim = cosine_similarity([query_embedding], [db_embedding])[0][0]
+                results.append({
+                    "id": id,
+                    "entry_id": entry_id,
+                    "text": text,
+                    "similarity": float(sim)
+                })
+
+        # Sort by similarity (highest first)
+        results.sort(key=lambda x: x["similarity"], reverse=True)
+        return results[:limit]
 ```
 
 ### 3. Ollama Integration
@@ -149,6 +190,7 @@ class StorageManager:
 from typing import List, Dict, Any
 from pydantic import BaseModel
 import ollama
+import numpy as np
 
 class EntrySummary(BaseModel):
     summary: str
@@ -156,7 +198,7 @@ class EntrySummary(BaseModel):
     mood: str
 
 class LLMService:
-    def __init__(self, model="llama3.1"):
+    def __init__(self, model="qwen3:latest"):
         self.model = model
 
     def summarize_entry(self, content: str) -> EntrySummary:
@@ -164,7 +206,8 @@ class LLMService:
         response = ollama.chat(
             messages=[{
                 'role': 'user',
-                'content': f"Summarize this journal entry and extract key topics and mood. Return as JSON:\n\n{content}"
+                'content': f"Summarize this journal entry. "
+                f"Extract key topics and mood. Return as JSON:\n\n{content}"
             }],
             model=self.model,
             format={
@@ -180,17 +223,18 @@ class LLMService:
 
         return EntrySummary.model_validate_json(response.message.content)
 
-    def semantic_search(self, query: str, vector_collection) -> List[Dict[str, Any]]:
-        """Search journal entries semantically"""
-        # First, get an embedding for the query using Ollama
-        response = ollama.embeddings(model=self.model, prompt=query)
-        query_embedding = response['embedding']
+    def get_embedding(self, text: str) -> np.ndarray:
+        """Get embedding vector for text using Ollama"""
+        response = ollama.embeddings(model=self.model, prompt=text)
+        return np.array(response['embedding'], dtype=np.float32)
 
-        # Use the embedding to search the vector database
-        results = vector_collection.query(
-            query_embeddings=[query_embedding],
-            n_results=5
-        )
+    def semantic_search(self, query: str, storage_manager) -> List[Dict[str, Any]]:
+        """Search journal entries semantically"""
+        # Get embedding for the query using Ollama
+        query_embedding = self.get_embedding(query)
+
+        # Use the embedding to search in SQLite
+        results = storage_manager.semantic_search(query_embedding)
 
         return results
 ```
@@ -244,7 +288,7 @@ async def summarize_entry(entry_id: str):
 @app.get("/search/")
 async def search_entries(q: str, semantic: bool = False):
     if semantic:
-        return llm.semantic_search(q, storage.collection)
+        return llm.semantic_search(q, storage)
     else:
         return storage.text_search(q)
 
@@ -276,8 +320,7 @@ For an MVP, a minimal HTML/JavaScript frontend that communicates with the FastAP
    │   ├── css/
    │   └── js/
    ├── journal_data/
-   │   ├── entries/
-   │   └── vectordb/
+   │   └── entries/
    ├── requirements.txt
    └── README.md
    ```
@@ -288,15 +331,16 @@ For an MVP, a minimal HTML/JavaScript frontend that communicates with the FastAP
    uvicorn
    pydantic
    ollama
-   chromadb
+   numpy
+   scikit-learn
    sqlite3
    python-multipart
    ```
 
 3. **Development Steps**
-   1. Implement storage manager
-   2. Set up vector database
-   3. Integrate Ollama
+   1. Implement storage manager with SQLite
+   2. Set up vector storage functionality in SQLite
+   3. Integrate Ollama for embeddings and LLM features
    4. Develop FastAPI endpoints
    5. Create minimal UI
    6. Test and refine

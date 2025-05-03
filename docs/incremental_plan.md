@@ -160,6 +160,7 @@ git commit -m "Improve error handling and user experience"
 ```
 git commit -m "Optimize performance for vector search and entry loading"
 ```
+- Add deletion to Journal Entries, Search results, and Entry details
 - Add pagination for entry listing
 - Optimize chunking algorithm
 - Implement caching where appropriate

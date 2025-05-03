@@ -22,6 +22,108 @@ document.addEventListener('DOMContentLoaded', () => {
   const entryContent = document.getElementById('entry-content');
   const searchResults = document.getElementById('search-results');
 
+  // Notification & dialog utility functions
+  const notifications = {
+    show(message, type = 'info', duration = 5000) {
+      // Create notification element
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+
+      // Add to DOM
+      document.body.appendChild(notification);
+
+      // Auto remove after duration
+      setTimeout(() => {
+        notification.style.animation = 'fade-out 0.5s forwards';
+        setTimeout(() => notification.remove(), 500);
+      }, duration);
+
+      return notification;
+    },
+
+    success(message, duration = 5000) {
+      return this.show(message, 'success', duration);
+    },
+
+    error(message, duration = 7000) {
+      return this.show(message, 'error', duration);
+    },
+
+    info(message, duration = 5000) {
+      return this.show(message, 'info', duration);
+    },
+
+    warning(message, duration = 6000) {
+      return this.show(message, 'warning', duration);
+    }
+  };
+
+  // Confirmation dialog utility
+  function showConfirmDialog(options) {
+    return new Promise((resolve) => {
+      const defaults = {
+        title: 'Confirm Action',
+        message: 'Are you sure you want to proceed?',
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        confirmClass: 'btn',
+        cancelClass: 'btn'
+      };
+
+      const settings = { ...defaults, ...options };
+
+      // Create overlay and modal
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+
+      // Modal content
+      modal.innerHTML = `
+        <div class="modal-header">
+          <h3 class="modal-title">${settings.title}</h3>
+        </div>
+        <div class="modal-body">
+          <p>${settings.message}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel ${settings.cancelClass}">${settings.cancelText}</button>
+          <button class="btn-confirm ${settings.confirmClass}">${settings.confirmText}</button>
+        </div>
+      `;
+
+      // Add to DOM
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      // Handle button clicks
+      const confirmBtn = modal.querySelector('.btn-confirm');
+      const cancelBtn = modal.querySelector('.btn-cancel');
+
+      confirmBtn.addEventListener('click', () => {
+        overlay.remove();
+        resolve(true);
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        overlay.remove();
+        resolve(false);
+      });
+    });
+  }
+
+  // Enhanced loading indicator
+  function showLoadingIndicator(container, message = 'Loading...') {
+    container.innerHTML = `
+      <div class="loading-container">
+        <div class="loading-spinner"></div>
+        <span class="loading-text">${message}</span>
+      </div>
+    `;
+  }
+
   // Navigation functions
   function showSection(section) {
     // Hide all sections
@@ -35,16 +137,20 @@ document.addEventListener('DOMContentLoaded', () => {
     section.classList.add('active');
   }
 
-  // API Functions
+  // API Functions with improved error handling
   async function fetchEntries(limit = 10, offset = 0) {
     try {
       const response = await fetch(`/entries/?limit=${limit}&offset=${offset}`);
+
       if (!response.ok) {
-        throw new Error(`Error fetching entries: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Failed to fetch entries`);
       }
+
       return await response.json();
     } catch (error) {
       console.error('Failed to fetch entries:', error);
+      notifications.error(`Failed to load entries: ${error.message}`);
       return [];
     }
   }
@@ -52,12 +158,16 @@ document.addEventListener('DOMContentLoaded', () => {
   async function fetchEntry(entryId) {
     try {
       const response = await fetch(`/entries/${entryId}`);
+
       if (!response.ok) {
-        throw new Error(`Error fetching entry: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Entry not found`);
       }
+
       return await response.json();
     } catch (error) {
       console.error(`Failed to fetch entry ${entryId}:`, error);
+      notifications.error(`Failed to load entry: ${error.message}`);
       return null;
     }
   }
@@ -74,16 +184,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Error creating entry: ${errorData.detail || response.status}`);
+        throw new Error(errorData.message || `Error ${response.status}: Failed to create entry`);
       }
 
       return await response.json();
     } catch (error) {
       console.error('Failed to create entry:', error);
+      notifications.error(`Failed to create entry: ${error.message}`);
       return null;
     }
   }
 
+  async function deleteEntry(entryId) {
+    try {
+      const response = await fetch(`/entries/${entryId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Failed to delete entry`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to delete entry ${entryId}:`, error);
+      notifications.error(`Failed to delete entry: ${error.message}`);
+      return null;
+    }
+  }
+
+  async function updateEntry(entryId, updateData) {
+    try {
+      const response = await fetch(`/entries/${entryId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Failed to update entry`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to update entry ${entryId}:`, error);
+      notifications.error(`Failed to update entry: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Update the existing searchEntries function with improved error handling
   async function searchEntries(query, options = {}) {
     try {
       // Handle empty query when using filters
@@ -98,9 +252,12 @@ document.addEventListener('DOMContentLoaded', () => {
           : `/entries/search/?query=${encodeURIComponent(queryParam)}`;
 
         const response = await fetch(url);
+
         if (!response.ok) {
-          throw new Error(`Error searching entries: ${response.status}`);
+          const errorData = await response.json();
+          throw new Error(errorData.message || `Error ${response.status}: Search failed`);
         }
+
         return await response.json();
       } else {
         // Advanced search with POST
@@ -118,12 +275,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (!response.ok) {
-          throw new Error(`Error searching entries: ${response.status}`);
+          const errorData = await response.json();
+          throw new Error(errorData.message || `Error ${response.status}: Search failed`);
         }
+
         return await response.json();
       }
     } catch (error) {
       console.error('Failed to search entries:', error);
+
+      // Specific error message for semantic search when Ollama might not be running
+      if (options.semantic && error.message.includes('500')) {
+        notifications.error('Semantic search failed. Please ensure Ollama is running on your system.');
+      } else {
+        notifications.error(`Search failed: ${error.message}`);
+      }
+
       return [];
     }
   }
@@ -137,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return await response.json();
     } catch (error) {
       console.error('Failed to fetch tags:', error);
+      notifications.error(`Failed to fetch tags: ${error.message}`);
       return [];
     }
   }
@@ -191,18 +359,33 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadEntries() {
-    entriesContainer.innerHTML = '<p class="loading-placeholder">Loading entries...</p>';
+    showLoadingIndicator(entriesContainer, 'Loading your journal entries...');
+
     const entries = await fetchEntries();
     renderEntries(entries);
+
+    if (entries.length === 0) {
+      notifications.info('No journal entries found. Create your first entry to get started!');
+    }
   }
 
   async function showEntryDetail(entryId) {
-    entryContent.innerHTML = '<p class="loading-placeholder">Loading entry...</p>';
+    showLoadingIndicator(entryContent, 'Loading entry details...');
     showSection(entryDetailSection);
 
     const entry = await fetchEntry(entryId);
     if (!entry) {
-      entryContent.innerHTML = '<p>Error loading entry. Please try again.</p>';
+      entryContent.innerHTML = `
+        <div class="error-container">
+          <p>Failed to load this journal entry.</p>
+          <button class="btn" id="retry-load-entry">Retry</button>
+        </div>
+      `;
+
+      document.getElementById('retry-load-entry').addEventListener('click', () => {
+        showEntryDetail(entryId);
+      });
+
       return;
     }
 
@@ -222,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Create tags HTML with clickable tags for filtering
     const tagsHtml = entry.tags && entry.tags.length
       ? entry.tags.map(tag => `<span class="tag clickable-tag" data-tag="${tag}">${tag}</span>`).join('')
-      : '';
+      : '<em>No tags</em>';
 
     entryContent.innerHTML = `
       <h2>${entry.title}</h2>
@@ -235,6 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="entry-actions detail-actions">
         <button id="edit-entry" class="btn" data-id="${entry.id}">Edit Entry</button>
         <button id="summarize-entry" class="btn" data-id="${entry.id}">Summarize</button>
+        <button id="delete-entry" class="btn btn-danger" data-id="${entry.id}">Delete</button>
       </div>
       <div id="entry-summary" class="hidden">
         <h3>Entry Summary</h3>
@@ -242,13 +426,32 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
-    // Add event listeners for the new buttons
+    // Add event listeners for the entry action buttons
     document.getElementById('edit-entry').addEventListener('click', () => {
       editEntry(entry);
     });
 
     document.getElementById('summarize-entry').addEventListener('click', () => {
       summarizeEntry(entry.id);
+    });
+
+    document.getElementById('delete-entry').addEventListener('click', async () => {
+      const confirmed = await showConfirmDialog({
+        title: 'Delete Entry',
+        message: 'Are you sure you want to delete this journal entry? This action cannot be undone.',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        confirmClass: 'btn btn-danger',
+      });
+
+      if (confirmed) {
+        const result = await deleteEntry(entry.id);
+        if (result) {
+          notifications.success('Journal entry deleted successfully');
+          showSection(entryListSection);
+          loadEntries();
+        }
+      }
     });
 
     // Make tags clickable to filter by tag
@@ -310,8 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const summarySection = document.getElementById('entry-summary');
     const summaryContent = document.getElementById('summary-content');
 
-    summaryContent.innerHTML = '<p>Generating summary...</p>';
     summarySection.classList.remove('hidden');
+    showLoadingIndicator(summaryContent, 'Generating summary with AI...');
 
     try {
       const response = await fetch(`/entries/${entryId}/summarize`, {
@@ -319,7 +522,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Error generating summary: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Failed to generate summary`);
       }
 
       const summary = await response.json();
@@ -330,9 +534,34 @@ document.addEventListener('DOMContentLoaded', () => {
         <p><strong>Key Topics:</strong> ${summary.key_topics.join(', ')}</p>
         <p><strong>Detected Mood:</strong> ${summary.mood}</p>
       `;
+
+      notifications.success('Summary generated successfully');
     } catch (error) {
-      summaryContent.innerHTML = `<p>Failed to generate summary: ${error.message}</p>`;
       console.error('Summary error:', error);
+
+      // Specific error message for Ollama connection issues
+      if (error.message.includes('500')) {
+        summaryContent.innerHTML = `
+          <div class="error-container">
+            <p>Failed to generate summary. Please ensure Ollama is running on your system.</p>
+            <button class="btn" id="retry-summary">Retry</button>
+          </div>
+        `;
+        notifications.error('Failed to generate summary: Ollama service may not be available');
+      } else {
+        summaryContent.innerHTML = `
+          <div class="error-container">
+            <p>Failed to generate summary: ${error.message}</p>
+            <button class="btn" id="retry-summary">Retry</button>
+          </div>
+        `;
+        notifications.error(`Failed to generate summary: ${error.message}`);
+      }
+
+      // Add retry button functionality
+      document.getElementById('retry-summary')?.addEventListener('click', () => {
+        summarizeEntry(entryId);
+      });
     }
   }
 
@@ -497,7 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Form submissions
+  // Form submissions with improved error handling
   journalForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -507,13 +736,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Validate input
     if (!titleInput.value.trim()) {
-      alert('Please enter a title for your journal entry.');
+      notifications.warning('Please enter a title for your journal entry.');
       titleInput.focus();
       return;
     }
 
     if (!contentInput.value.trim()) {
-      alert('Please enter content for your journal entry.');
+      notifications.warning('Please enter content for your journal entry.');
       contentInput.focus();
       return;
     }
@@ -532,20 +761,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Disable form during submission
     const submitButton = journalForm.querySelector('button[type="submit"]');
     submitButton.disabled = true;
-    submitButton.textContent = 'Saving...';
+    submitButton.innerHTML = '<div class="loading-spinner"></div> Saving...';
 
     try {
       const result = await createEntry(entryData);
       if (result) {
-        alert('Journal entry created successfully!');
+        notifications.success('Journal entry created successfully!');
         journalForm.reset();
         showSection(entryListSection);
         loadEntries();
       } else {
-        alert('Failed to create journal entry. Please try again.');
+        throw new Error('Failed to create journal entry.');
       }
     } catch (error) {
-      alert(`Error: ${error.message}`);
+      notifications.error(`Error: ${error.message}`);
     } finally {
       submitButton.disabled = false;
       submitButton.textContent = 'Save Entry';
@@ -577,12 +806,97 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dateTo) searchOptions.date_to = dateTo;
     if (selectedTags.length > 0) searchOptions.tags = selectedTags;
 
-    performSearch(searchQuery, searchOptions);
+    // Validate date range if both dates are provided
+    if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+      notifications.warning("The 'from date' cannot be after the 'to date'. Please adjust your date range.");
+      return;
+    }
+
+    // If using semantic search, warn user if Ollama might not be running
+    if (isSemanticSearch) {
+      const warning = document.createElement('div');
+      warning.classList.add('info-banner');
+      warning.innerHTML = 'Using semantic search - this requires Ollama to be running.';
+      searchResults.innerHTML = '';
+      searchResults.appendChild(warning);
+
+      setTimeout(() => {
+        performSearch(searchQuery, searchOptions);
+      }, 500);
+    } else {
+      performSearch(searchQuery, searchOptions);
+    }
   });
 
   // Entry Detail Navigation
   document.getElementById('back-to-list').addEventListener('click', () => {
     showSection(entryListSection);
     loadEntries();
+  });
+
+  // API Connection Status Check
+  async function checkApiConnection() {
+    try {
+      const response = await fetch('/api/info', {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+
+      if (!response.ok) {
+        throw new Error('API connection failed');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('API connection check failed:', error);
+
+      // Show a persistent connection error message
+      const connectionError = document.createElement('div');
+      connectionError.className = 'connection-error';
+      connectionError.innerHTML = `
+        <div class="connection-error-content">
+          <h3>Connection Error</h3>
+          <p>Cannot connect to the journal API. Please ensure the server is running.</p>
+          <button id="retry-connection" class="btn">Retry Connection</button>
+        </div>
+      `;
+      document.body.appendChild(connectionError);
+
+      // Add retry button functionality
+      document.getElementById('retry-connection').addEventListener('click', async () => {
+        connectionError.innerHTML = '<div class="loading-container"><div class="loading-spinner"></div><span>Checking connection...</span></div>';
+
+        const isConnected = await checkApiConnection();
+        if (isConnected) {
+          connectionError.remove();
+          notifications.success('Connection restored');
+          loadEntries();
+        } else {
+          // If still not connected, restore the error message
+          connectionError.innerHTML = `
+            <div class="connection-error-content">
+              <h3>Connection Error</h3>
+              <p>Cannot connect to the journal API. Please ensure the server is running.</p>
+              <button id="retry-connection" class="btn">Retry Connection</button>
+            </div>
+          `;
+
+          // Re-attach event listener to new button
+          document.getElementById('retry-connection').addEventListener('click', () => {
+            checkApiConnection();
+          });
+        }
+      });
+
+      return false;
+    }
+  }
+
+  // Check API connection when the app starts
+  checkApiConnection().then(isConnected => {
+    if (isConnected) {
+      // Initialize the application
+      loadEntries();
+    }
   });
 });

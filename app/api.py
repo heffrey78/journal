@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request, status
 from fastapi.staticfiles import StaticFiles
-from typing import List, Optional
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from typing import List, Optional, Any
 from datetime import datetime, date
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models import JournalEntry
 from app.storage import StorageManager
@@ -85,6 +87,53 @@ class EntryStats(BaseModel):
                 ],
             }
         }
+
+
+class ErrorResponse(BaseModel):
+    """Model for structured error responses"""
+
+    status_code: int
+    message: str
+    details: Optional[Any] = None
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+# Setup exception handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Custom handler for HTTP exceptions"""
+    error = ErrorResponse(
+        status_code=exc.status_code,
+        message=str(exc.detail),
+        details=getattr(exc, "details", None),
+    )
+    return JSONResponse(status_code=exc.status_code, content=error.dict())
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Custom handler for validation errors"""
+    error = ErrorResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        message="Validation error on request data",
+        details=[{"loc": err["loc"], "msg": err["msg"]} for err in exc.errors()],
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=error.dict()
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler for unhandled exceptions"""
+    error = ErrorResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        message="An unexpected error occurred",
+        details=str(exc),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=error.dict()
+    )
 
 
 @app.get("/", tags=["root"])

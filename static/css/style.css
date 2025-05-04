@@ -12,6 +12,10 @@
   --success-color: #2ecc71;
   --warning-color: #f39c12;
   --error-color: #e74c3c;
+  --code-bg: #f5f7f9;
+  --table-border: #dfe2e5;
+  --table-header-bg: #f6f8fa;
+  --table-alt-bg: #fafbfc;
 }
 
 /* Base Styles */
@@ -751,4 +755,157 @@ input[type="range"]::-moz-range-thumb {
   align-items: center;
   z-index: 100;
   border-radius: 8px;
+}
+
+/* Enhanced Markdown Rendering Styles */
+/* These styles improve the appearance of markdown elements */
+
+/* Tables */
+#detail-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  overflow-x: auto;
+  display: block;
+}
+
+#detail-content table th,
+#detail-content table td {
+  border: 1px solid var(--table-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+#detail-content table th {
+  background-color: var(--table-header-bg);
+  font-weight: 600;
+}
+
+#detail-content table tr:nth-child(even) {
+  background-color: var(--table-alt-bg);
+}
+
+/* Task Lists */
+#detail-content ul.contains-task-list {
+  list-style-type: none;
+  padding-left: 1.5rem;
+}
+
+#detail-content ul.contains-task-list li {
+  position: relative;
+  margin-bottom: 0.5rem;
+}
+
+#detail-content ul.contains-task-list li input[type="checkbox"] {
+  margin-right: 0.5rem;
+  width: auto;
+  vertical-align: middle;
+}
+
+/* Code Blocks */
+#detail-content pre {
+  background-color: var(--code-bg);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+#detail-content code {
+  font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+  font-size: 0.9rem;
+}
+
+#detail-content pre code {
+  padding: 0;
+  background-color: transparent;
+  color: inherit;
+  white-space: pre;
+}
+
+#detail-content :not(pre) > code {
+  background-color: var(--code-bg);
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  color: var(--accent-color);
+}
+
+/* Blockquotes */
+#detail-content blockquote {
+  border-left: 4px solid var(--primary-color);
+  padding: 0.5rem 0 0.5rem 1rem;
+  margin: 1rem 0;
+  background-color: rgba(52, 152, 219, 0.05);
+  color: var(--light-text);
+}
+
+#detail-content blockquote > :first-child {
+  margin-top: 0;
+}
+
+#detail-content blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* Horizontal Rules */
+#detail-content hr {
+  height: 4px;
+  margin: 2rem 0;
+  background-color: var(--border-color);
+  border: none;
+}
+
+/* Images */
+#detail-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1rem auto;
+  border-radius: 4px;
+}
+
+/* Better Heading Hierarchy */
+#detail-content h1 {
+  font-size: 2rem;
+  margin: 2rem 0 1rem;
+  color: var(--secondary-color);
+  border-bottom: 2px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+#detail-content h2 {
+  font-size: 1.7rem;
+  margin: 2rem 0 1rem;
+  color: var(--secondary-color);
+}
+
+#detail-content h3 {
+  font-size: 1.4rem;
+  margin: 1.5rem 0 1rem;
+  color: var(--secondary-color);
+}
+
+#detail-content h4 {
+  font-size: 1.2rem;
+  margin: 1.5rem 0 0.8rem;
+  color: var(--secondary-color);
+}
+
+#detail-content h5 {
+  font-size: 1.1rem;
+  margin: 1.2rem 0 0.8rem;
+  color: var(--secondary-color);
+}
+
+#detail-content h6 {
+  font-size: 1rem;
+  margin: 1.2rem 0 0.8rem;
+  color: var(--light-text);
+  text-transform: uppercase;
+}
+
+/* Highlight.js Styling Override */
+#detail-content .hljs {
+  background: var(--code-bg);
+  border-radius: 4px;
 }

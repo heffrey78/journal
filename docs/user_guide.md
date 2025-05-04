@@ -5,6 +5,7 @@ This guide provides detailed instructions on how to use the Journal App, a perso
 ## Table of Contents
 - [Getting Started](#getting-started)
 - [Working with Journal Entries](#working-with-journal-entries)
+- [Markdown Features](#markdown-features)
 - [Search Capabilities](#search-capabilities)
 - [Using Tags](#using-tags)
 - [AI Features](#ai-features)
@@ -74,6 +75,85 @@ python cli.py add "My Journal Title" "Content of my journal entry" --tags "tag1,
 1. View the entry you want to delete
 2. Click the "Delete" button
 3. Confirm the deletion when prompted
+
+## Markdown Features
+
+Journal App supports rich text formatting with enhanced Markdown support. You can use these features to create well-structured, visually appealing journal entries.
+
+### Basic Formatting
+
+```markdown
+# Heading 1
+## Heading 2
+### Heading 3
+
+**Bold text**
+*Italic text*
+~~Strikethrough~~
+
+> This is a blockquote
+```
+
+### Lists
+
+```markdown
+* Unordered list item
+* Another item
+  * Nested item
+
+1. Ordered list item
+2. Another ordered item
+```
+
+### Links and Images
+
+```markdown
+[Link text](https://example.com)
+
+![Image alt text](path/to/image.jpg)
+```
+
+### Code Blocks with Syntax Highlighting
+
+````markdown
+```javascript
+function sayHello() {
+  console.log("Hello, world!");
+}
+```
+````
+
+### Tables
+
+You can create tables using the following syntax:
+
+```markdown
+| Header 1 | Header 2 | Header 3 |
+|----------|----------|----------|
+| Cell 1   | Cell 2   | Cell 3   |
+| Cell 4   | Cell 5   | Cell 6   |
+```
+
+This will render as:
+
+| Header 1 | Header 2 | Header 3 |
+|----------|----------|----------|
+| Cell 1   | Cell 2   | Cell 3   |
+| Cell 4   | Cell 5   | Cell 6   |
+
+### Task Lists
+
+```markdown
+- [x] Completed task
+- [ ] Incomplete task
+- [ ] Another task
+```
+
+### Horizontal Rule
+
+```markdown
+---
+```
 
 ## Search Capabilities
 

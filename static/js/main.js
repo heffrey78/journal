@@ -225,11 +225,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Improved format content function to better handle markdown
   function formatContent(content) {
-    // If we're in a browser environment, use the marked library that EasyMDE depends on
+    // If we're in a browser environment, use the marked library for advanced markdown rendering
     if (typeof marked !== 'undefined') {
       try {
-        // Use the marked library to parse markdown
-        return marked.parse(content);
+        // Configure marked options for advanced markdown features
+        marked.setOptions({
+          gfm: true, // GitHub Flavored Markdown
+          breaks: true, // Convert line breaks to <br>
+          headerIds: true, // Generate IDs for headers
+          mangle: false, // Don't escape HTML
+          tables: true, // Enable GFM tables
+          taskLists: true, // Enable task lists
+          smartLists: true, // Better list behavior
+          smartypants: true, // Prettier quotes and dashes
+          highlight: function(code, lang) {
+            // Use highlight.js for syntax highlighting if available
+            if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
+              try {
+                return hljs.highlight(code, { language: lang }).value;
+              } catch (e) {
+                console.error('Highlight.js error:', e);
+              }
+            }
+            return code; // Fallback to no highlighting
+          }
+        });
+
+        // Parse content with marked
+        const parsed = marked.parse(content);
+
+        // Apply syntax highlighting to any code blocks that might not have language specified
+        if (typeof hljs !== 'undefined') {
+          setTimeout(() => {
+            document.querySelectorAll('pre code').forEach((block) => {
+              if (!block.className.includes('hljs')) {
+                hljs.highlightElement(block);
+              }
+            });
+          }, 0);
+        }
+
+        return parsed;
       } catch (error) {
         console.error('Failed to use markdown parser:', error);
         // Fall back to basic formatting if parser fails

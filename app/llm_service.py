@@ -8,7 +8,7 @@ import ollama
 import numpy as np
 import logging
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from pydantic import BaseModel
 from app.storage import StorageManager
 from app.models import LLMConfig
@@ -50,6 +50,7 @@ class EntrySummary(BaseModel):
     summary: str
     key_topics: List[str]
     mood: str
+    favorite: bool = False
 
 
 class LLMService:
@@ -59,6 +60,22 @@ class LLMService:
     This service provides embedding generation for semantic search and
     structured output capabilities for journal entry analysis.
     """
+
+    # Define prompt templates for different analysis types
+    PROMPT_TEMPLATES = {
+        "default": "Summarize this journal entry. "
+        "Extract key topics and mood. Return as JSON:",
+        "detailed": "Provide a detailed analysis of this journal entry. "
+        "Identify key themes, emotional states, and important insights. "
+        "Extract key topics and mood. Return as JSON:",
+        "creative": "Read this journal entry and create an insightful, "
+        "reflective summary that captures the essence of the writing. "
+        "Extract key topics and mood. Return as JSON:",
+        "concise": "Create a very brief summary of this journal entry "
+        "in 2-3 sentences. Extract key topics and mood. Return as JSON:",
+        "prompts": "Generate a list of prompts based on this journal entry. "
+        "Help the user reflect on their thoughts and feelings.",
+    }
 
     def __init__(
         self,
@@ -87,6 +104,7 @@ class LLMService:
         self.temperature = self.config.temperature
         self.max_tokens = self.config.max_tokens
         self.system_prompt = self.config.system_prompt
+        self.min_similarity = self.config.min_similarity
 
         # Verify Ollama connection on initialization
         self._verify_ollama_connection()
@@ -108,6 +126,7 @@ class LLMService:
                 self.temperature = self.config.temperature
                 self.max_tokens = self.config.max_tokens
                 self.system_prompt = self.config.system_prompt
+                self.min_similarity = self.config.min_similarity
                 logger.info("LLM configuration reloaded from storage")
                 return True
         return False
@@ -178,12 +197,17 @@ class LLMService:
             768, dtype=np.float32
         )  # Use consistent size for nomic-embed-text model
 
-    def process_entries_without_embeddings(self, limit: int = 10) -> int:
+    def process_entries_without_embeddings(
+        self,
+        limit: int = 10,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> int:
         """
         Process entries that don't have embeddings yet.
 
         Args:
             limit: Maximum number of chunks to process
+            progress_callback: Optional callback function to report progress
 
         Returns:
             Number of chunks processed
@@ -201,8 +225,9 @@ class LLMService:
 
         processed = 0
         failed = 0
+        total_chunks = len(chunks)
 
-        for chunk in chunks:
+        for chunk_index, chunk in enumerate(chunks):
             try:
                 entry_id = chunk["entry_id"]
                 chunk_id = chunk["chunk_id"]
@@ -217,6 +242,10 @@ class LLMService:
                 )
                 processed += 1
 
+                # Report progress if callback provided
+                if progress_callback:
+                    progress_callback(chunk_index + 1, total_chunks)
+
             except Exception as e:
                 failed += 1
                 logger.error(
@@ -228,12 +257,19 @@ class LLMService:
 
         return processed
 
-    def summarize_entry(self, content: str) -> EntrySummary:
+    def summarize_entry(
+        self,
+        content: str,
+        prompt_type: str = "default",
+        progress_callback: Optional[Callable[[float], None]] = None,
+    ) -> EntrySummary:
         """
         Generate a summary of a journal entry using structured output.
 
         Args:
             content: The journal entry content to summarize
+            prompt_type: Type of prompt to use (default, detailed, creative, concise)
+            progress_callback: Optional callback function to report progress (0.0-1.0)
 
         Returns:
             EntrySummary object with summary, key topics and mood
@@ -242,6 +278,15 @@ class LLMService:
             SummarizationError: If summarization fails
         """
         try:
+            # Get appropriate prompt template or fall back to default
+            prompt_template = self.PROMPT_TEMPLATES.get(
+                prompt_type, self.PROMPT_TEMPLATES["default"]
+            )
+
+            # Report initial progress
+            if progress_callback:
+                progress_callback(0.1)
+
             response = ollama.chat(
                 model=self.model_name,
                 messages=[
@@ -252,8 +297,7 @@ class LLMService:
                     },
                     {
                         "role": "user",
-                        "content": f"Summarize this journal entry. "
-                        f"Extract key topics and mood. Return as JSON:\n\n{content}",
+                        "content": f"{prompt_template}\n\n{content}",
                     },
                 ],
                 options={
@@ -281,6 +325,10 @@ class LLMService:
                 },
             )
 
+            # Report completion
+            if progress_callback:
+                progress_callback(1.0)
+
             # Parse the response into the EntrySummary model
             content = response["message"]["content"]
             return EntrySummary.model_validate_json(content)
@@ -288,20 +336,81 @@ class LLMService:
             logger.error(f"Error summarizing entry: {e}")
             raise SummarizationError(f"Failed to summarize entry: {e}")
 
+    def save_favorite_summary(self, entry_id: str, summary: EntrySummary) -> bool:
+        """
+        Save a summary as a favorite for a specific entry.
+
+        Args:
+            entry_id: The ID of the journal entry
+            summary: The EntrySummary object to save
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.storage_manager:
+            logger.error("Cannot save favorite summary without storage manager")
+            return False
+
+        try:
+            # Mark as favorite
+            summary.favorite = True
+
+            # Save to storage
+            return self.storage_manager.save_entry_summary(entry_id, summary)
+        except Exception as e:
+            logger.error(f"Failed to save favorite summary: {e}")
+            return False
+
+    def get_favorite_summaries(self, entry_id: str) -> List[EntrySummary]:
+        """
+        Get all favorite summaries for a specific entry.
+
+        Args:
+            entry_id: The ID of the journal entry
+
+        Returns:
+            List of EntrySummary objects
+        """
+        if not self.storage_manager:
+            logger.error("Cannot get favorite summaries without storage manager")
+            return []
+
+        try:
+            return self.storage_manager.get_entry_summaries(entry_id)
+        except Exception as e:
+            logger.error(f"Failed to get favorite summaries: {e}")
+            return []
+
     def semantic_search(
-        self, query: str, limit: int = 5, offset: int = 0, batch_size: int = 1000
+        self,
+        query: str,
+        limit: int = 5,
+        offset: int = 0,
+        batch_size: int = 1000,
+        min_similarity: Optional[
+            float
+        ] = None,  # Allow overriding the default threshold
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search on journal entries with pagination support.
+
+        This implementation uses a hybrid approach combining:
+        1. Vector-based similarity search using embeddings
+        2. Text-based search using the expanded query terms
+
+        This ensures we find both semantically similar content and
+        content with direct keyword matches from the expanded query.
 
         Args:
             query: The search query text
             limit: Maximum number of results to return
             offset: Number of results to skip for pagination
             batch_size: Size of batches for processing vectors
+            min_similarity: Optional minimum similarity threshold (0-1).
+                           If None, uses the configured default value.
 
         Returns:
-            List of search results
+            List of search results filtered by relevance
 
         Raises:
             ValueError: If storage manager is not set
@@ -309,12 +418,118 @@ class LLMService:
         if not self.storage_manager:
             raise ValueError("Storage manager is required for this operation")
 
-        # Generate embedding for the query
+        # Use the configured threshold if none is provided
+        if min_similarity is None:
+            min_similarity = self.min_similarity
+
+        # Expand the query to better capture semantic meaning
+        expanded_query = self._expand_semantic_query(query)
+
+        # Get expanded query terms for text matching
+        expanded_terms = expanded_query.lower().split()
+
+        # Generate embedding for the original query
         query_embedding = self.get_embedding(query)
 
-        # Search using the storage manager's optimized method
-        results = self.storage_manager.semantic_search(
-            query_embedding, limit=limit, offset=offset, batch_size=batch_size
+        # HYBRID APPROACH: Combine vector search with text search
+
+        # 1. Get semantic search results
+        semantic_results = self.storage_manager.semantic_search(
+            query_embedding,
+            limit=limit * 2,  # Get more results to account for filtering
+            offset=offset,
+            batch_size=batch_size,
         )
 
-        return results
+        # Track entry IDs to avoid duplicates
+        found_entry_ids = set()
+        final_results = []
+
+        # 2. Filter semantic results by similarity threshold and collect entry IDs
+        for result in semantic_results:
+            if result["similarity"] >= min_similarity:
+                found_entry_ids.add(result["entry_id"])
+                final_results.append(result)
+
+        # 3. Add text search results for expanded terms if they're not already included
+        if self.storage_manager:
+            # Search for entries containing any of the expanded terms
+            for term in expanded_terms:
+                if len(term) < 3:
+                    continue  # Skip very short terms
+
+                text_results = self.storage_manager.text_search(
+                    query=term, limit=limit  # Reasonable limit for each term
+                )
+
+                # Add unique entries not already found by semantic search
+                for entry in text_results:
+                    if entry.id not in found_entry_ids:
+                        found_entry_ids.add(entry.id)
+                        # Create a result dict similar to semantic results
+                        final_results.append(
+                            {
+                                "entry_id": entry.id,
+                                "entry": entry,
+                                "similarity": 0.7,  # Default similarity
+                                "text": f"Text match for term: '{term}'",
+                                "match_type": "text",  # Mark as text match
+                            }
+                        )
+
+        # Sort by similarity (semantic matches naturally rank higher)
+        final_results.sort(key=lambda x: x["similarity"], reverse=True)
+
+        # Apply limit to combined results
+        return final_results[:limit]
+
+    def _expand_semantic_query(self, query: str) -> str:
+        """
+        Expand a search query to improve semantic search results using LLM.
+
+        This method uses the LLM to generate related terms for the query
+        to improve semantic search accuracy.
+
+        Args:
+            query: Original search query
+
+        Returns:
+            Expanded query for better semantic matching
+        """
+        # If query is too short or empty, return as is
+        if not query or len(query.strip()) < 3:
+            return query
+
+        try:
+            # Prepare a prompt for the LLM to expand the query
+            system_message = "You are a semantic search enhancer."
+            user_message = (
+                "Expand the following query with related terms "
+                f"to improve semantic search: '{query}'\n\n"
+                "Return ONLY a space-separated list of terms without explanations. "
+                "Include the original query terms adding 5-8 closely related concepts. "
+                "Keep the total response under 15 words."
+            )
+
+            # Call Ollama to get expanded terms
+            response = ollama.chat(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message},
+                ],
+                options={
+                    "temperature": 0.2,  # Low temperature for more deterministism
+                    "num_predict": 100,  # Limit token count for efficiency
+                },
+            )
+
+            # Extract expanded query from response
+            expanded_query = response["message"]["content"].strip()
+            logger.info(f"Expanded query '{query}' to '{expanded_query}'")
+            return expanded_query
+
+        except Exception as e:
+            # On failure, log and return original query
+            logger.warning(f"Failed to expand query using LLM: {e}")
+            return query

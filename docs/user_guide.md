@@ -216,20 +216,57 @@ Tags help you categorize and find related entries.
 
 The Journal App includes AI-powered features to help you gain insights from your journal entries.
 
-### Entry Summarization
+### Entry Analysis and Summaries
 
+#### Basic Analysis
 1. View any journal entry
-2. Click the "Summarize" button
+2. Click the "Analyze Entry" button
 3. The system will analyze your entry and provide:
    - A brief summary
    - Key topics identified in the entry
    - The overall mood or sentiment detected
+
+#### Using Different Analysis Types
+The Journal App offers multiple types of analyses to give you different perspectives on your entries:
+
+1. **Default Summary**: A balanced analysis providing key points, topics, and mood
+2. **Detailed Analysis**: A more comprehensive breakdown with deeper insights
+3. **Creative Insights**: A more interpretive, creative take on your entry's themes
+4. **Concise Summary**: Just the essential points in a brief format
+
+To use different analysis types:
+1. Select the desired analysis type from the dropdown menu
+2. Click "Analyze Entry"
+3. The progress bar will display the analysis status
+4. Results will appear when processing is complete
+
+#### Saving Favorite Analyses
+You can save analyses you find particularly helpful or insightful:
+
+1. Generate an analysis using any prompt type
+2. Review the generated analysis
+3. Click the "Save as Favorite" button
+4. The analysis will be stored with the entry for future reference
+
+#### Viewing Saved Analyses
+To view analyses you've previously saved:
+
+1. Open any entry with saved analyses
+2. Scroll down to the "Favorite Analyses" section
+3. Each saved analysis will show:
+   - The analysis type used
+   - The summary content
+   - Key topics identified
+   - Detected mood
+   - When the analysis was saved
 
 ### Semantic Search Insights
 
 When using semantic search, the results include relevance information:
 1. Matches will be ranked by conceptual similarity
 2. The relevant parts of each entry that match your search will be highlighted
+
+> **Note**: For semantic search and AI features to work, you need Ollama running on your system with appropriate models configured. If you receive errors about Ollama connections, check that the service is running.
 
 ## Command Line Interface
 

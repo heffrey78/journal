@@ -7,7 +7,10 @@ The Journal App is a personal journaling application designed to help users crea
 - **Markdown Journal Entries**: Store your journal entries in markdown format
 - **SQLite Database**: Efficient storage of entry metadata and vector embeddings
 - **Vector Search**: Semantic search capabilities powered by Ollama embeddings
-- **Text Analysis**: Get summaries and insights about your journal entries
+- **Enhanced LLM Features**:
+  - Choose from multiple prompt types for entry analysis
+  - Track analysis progress in real-time
+  - Save favorite analyses for future reference
 - **Simple UI**: Clean web interface for creating and searching journal entries
 
 ## Architecture
@@ -186,7 +189,11 @@ The Journal App exposes the following REST API endpoints:
 
 ### LLM Features
 
-- `POST /entries/{entry_id}/summarize`: Generate AI summary of an entry
+- `POST /entries/{entry_id}/summarize`: Generate basic AI summary of an entry
+- `POST /entries/{entry_id}/summarize/custom`: Generate custom analysis with specified prompt type
+  - Request body: `{"prompt_type": "default|detailed|creative|concise"}`
+- `POST /entries/{entry_id}/summaries/favorite`: Save a summary as a favorite
+- `GET /entries/{entry_id}/summaries/favorite`: Retrieve all favorite summaries for an entry
 
 ### Statistics
 

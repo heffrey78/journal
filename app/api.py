@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, Depends, Request, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 from datetime import datetime, date
 from pydantic import BaseModel, Field
 
@@ -58,6 +58,9 @@ class SearchParams(BaseModel):
     semantic: bool = False  # Toggle for semantic search
     limit: int = Field(default=10, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+    min_similarity: Optional[float] = Field(
+        None, ge=0.0, le=1.0
+    )  # Optional similarity threshold for semantic search
 
 
 class TagCount(BaseModel):
@@ -98,6 +101,30 @@ class ErrorResponse(BaseModel):
     message: str
     details: Optional[Any] = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class SummarizeRequest(BaseModel):
+    """Model for customized summarization requests"""
+
+    prompt_type: str = Field(
+        "default",
+        description="Type of prompt to use (default, detailed, creative, concise)",
+    )
+
+
+class ProgressResponse(BaseModel):
+    """Model for progress responses"""
+
+    progress: float = Field(..., description="Progress value between 0 and 1")
+    status: str = Field(..., description="Status message")
+
+
+class SemanticSearchResult(BaseModel):
+    """Model for semantic search results that includes similarity score"""
+
+    entry: JournalEntry
+    similarity: float
+    text: Optional[str] = None  # The text chunk that matched
 
 
 # Setup exception handlers
@@ -253,6 +280,7 @@ async def delete_entry(entry_id: str, storage: StorageManager = Depends(get_stor
 @app.post("/entries/search/", tags=["search"])
 async def advanced_search(
     search_params: SearchParams,
+    include_scores: bool = False,  # Add parameter to include similarity scores
     storage: StorageManager = Depends(get_storage),
     llm: LLMService = Depends(get_llm_service),
 ):
@@ -260,44 +288,65 @@ async def advanced_search(
     Advanced search for journal entries by text, date range, and tags.
 
     Set semantic=true to use semantic search powered by Ollama embeddings.
+    Set include_scores=true to include similarity scores in semantic search results.
     """
     try:
         if search_params.semantic:
             # Use semantic search with LLM service with pagination
+            # and minimum similarity threshold
             results = llm.semantic_search(
                 search_params.query,
                 limit=search_params.limit,
                 offset=search_params.offset,
+                min_similarity=search_params.min_similarity,
             )
 
-            # Results already contain the full entries
-            return [result["entry"] for result in results if "entry" in result]
+            # Format results depending on whether scores should be included
+            if include_scores:
+                return [
+                    SemanticSearchResult(
+                        entry=result["entry"],
+                        similarity=result["similarity"],
+                        text=result.get("text", None),
+                    )
+                    for result in results
+                ]
+            else:
+                # Just return the entries for backward compatibility
+                return [result["entry"] for result in results if "entry" in result]
         else:
-            # Regular text search
+            # Regular text search - pass all filter parameters including pagination
             entries = storage.text_search(
                 query=search_params.query,
                 date_from=search_params.date_from,
                 date_to=search_params.date_to,
                 tags=search_params.tags,
+                limit=search_params.limit,
+                offset=search_params.offset,
             )
-            # Apply manual pagination for consistency
-            # fmt: off
-            return_entries = entries[
-                search_params.offset: search_params.offset + search_params.limit
-            ]
-            # fmt: on
-            # Return the paginated entries
-            return return_entries
+
+            # No need for manual pagination anymore since it's handled by text_search
+            return entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
-@app.get("/entries/search/", response_model=List[JournalEntry], tags=["search"])
+@app.get(
+    "/entries/search/",
+    response_model=List[Union[JournalEntry, SemanticSearchResult]],
+    tags=["search"],
+)
 async def simple_search(
     query: str = Query(..., min_length=1),
     semantic: bool = False,
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    min_similarity: Optional[float] = Query(
+        None, ge=0.0, le=1.0
+    ),  # Allow None to use config default
+    include_scores: bool = Query(
+        False, description="Include similarity scores in semantic search results"
+    ),
     storage: StorageManager = Depends(get_storage),
     llm: LLMService = Depends(get_llm_service),
 ):
@@ -305,24 +354,45 @@ async def simple_search(
     Simple search for journal entries by text.
 
     Set semantic=true to use semantic search powered by Ollama embeddings.
+    Set include_scores=true to include similarity scores in semantic search results.
     """
     try:
         if semantic:
-            # Use semantic search with LLM service with pagination
-            results = llm.semantic_search(query, limit=limit, offset=offset)
+            # Use semantic search with LLM service
+            # with pagination and similarity threshold
+            # If min_similarity is None, the LLMService will use the default value
+            results = llm.semantic_search(
+                query, limit=limit, offset=offset, min_similarity=min_similarity
+            )
 
-            # Results already contain the full entries
-            return [result["entry"] for result in results if "entry" in result]
+            # Format results depending on whether scores should be included
+            if include_scores:
+                return [
+                    SemanticSearchResult(
+                        entry=result["entry"],
+                        similarity=result["similarity"],
+                        text=result.get("text", None),
+                    )
+                    for result in results
+                ]
+            else:
+                # Just return the entries for backward compatibility
+                return [result["entry"] for result in results if "entry" in result]
         else:
-            # Regular text search
-            entries = storage.text_search(query)
-            # Apply manual pagination for consistency
-            # fmt: off
-            return_entries = entries[
-                offset: offset + limit
-            ]
-            # fmt: on
-            return return_entries
+            # Regular text search with proper pagination
+            entries = storage.text_search(
+                query=query,
+                # No additional filters for simple search
+                date_from=None,
+                date_to=None,
+                tags=None,
+                # Pass pagination parameters
+                limit=limit,
+                offset=offset,
+            )
+
+            # No need for manual pagination anymore
+            return entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
@@ -362,6 +432,166 @@ async def summarize_entry(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to generate entry summary: {str(e)}"
+        )
+
+
+@app.post(
+    "/entries/{entry_id}/summarize/custom", response_model=EntrySummary, tags=["llm"]
+)
+async def summarize_entry_custom(
+    entry_id: str,
+    request: SummarizeRequest,
+    storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """
+    Generate a customized summary of a journal entry using LLM with prompt type.
+
+    Args:
+        entry_id: ID of the entry to summarize
+        request: Contains prompt_type parameter
+
+    Returns:
+        An EntrySummary object containing a summary, key topics, and detected mood
+    """
+    try:
+        # Get the entry from storage
+        entry = storage.get_entry(entry_id)
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+
+        # Use the LLM service to generate the summary with custom prompt
+        summary = llm.summarize_entry(entry.content, prompt_type=request.prompt_type)
+        return summary
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate entry summary: {str(e)}"
+        )
+
+
+@app.post("/entries/{entry_id}/summaries/favorite", tags=["llm"])
+async def save_favorite_summary(
+    entry_id: str,
+    summary: EntrySummary,
+    storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """
+    Save a generated summary as a favorite for a specific entry.
+
+    Args:
+        entry_id: ID of the journal entry
+        summary: EntrySummary object to save as favorite
+
+    Returns:
+        Confirmation message
+    """
+    try:
+        # Get the entry to verify it exists
+        entry = storage.get_entry(entry_id)
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+
+        # Save the summary as a favorite
+        success = llm.save_favorite_summary(entry_id, summary)
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to save favorite summary"
+            )
+
+        return {"status": "success", "message": "Summary saved as favorite"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to save favorite summary: {str(e)}"
+        )
+
+
+@app.get(
+    "/entries/{entry_id}/summaries/favorite",
+    response_model=List[EntrySummary],
+    tags=["llm"],
+)
+async def get_favorite_summaries(
+    entry_id: str,
+    storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """
+    Retrieve all favorite summaries for a specific journal entry.
+
+    Args:
+        entry_id: ID of the journal entry
+
+    Returns:
+        List of EntrySummary objects marked as favorites
+    """
+    try:
+        # Get the entry to verify it exists
+        entry = storage.get_entry(entry_id)
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+
+        # Get favorite summaries
+        summaries = llm.get_favorite_summaries(entry_id)
+        return summaries
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve favorite summaries: {str(e)}"
+        )
+
+
+@app.get("/prompts/available", tags=["llm"])
+async def get_available_prompts(llm: LLMService = Depends(get_llm_service)):
+    """
+    Get list of available prompt templates for summarization.
+
+    Returns:
+        Dictionary of available prompt types and their templates
+    """
+    try:
+        return {
+            "prompt_types": list(llm.PROMPT_TEMPLATES.keys()),
+            "templates": llm.PROMPT_TEMPLATES,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve available prompts: {str(e)}"
+        )
+
+
+@app.post("/vectors/process", tags=["llm"])
+async def process_vectors(
+    limit: int = Query(10, ge=1, le=100),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """
+    Process entries without embeddings to update the vector database.
+
+    Args:
+        limit: Maximum number of chunks to process
+
+    Returns:
+        Status message with number of chunks processed
+    """
+    try:
+        # Process chunks without embeddings
+        processed = llm.process_entries_without_embeddings(limit)
+        return {
+            "status": "success",
+            "message": f"Processed {processed} chunks",
+            "processed_count": processed,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process vectors: {str(e)}"
         )
 
 

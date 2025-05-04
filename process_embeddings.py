@@ -27,7 +27,21 @@ def process_all_embeddings(batch_size=10, model_name="nomic-embed-text:latest"):
 
     # Initialize services
     storage = StorageManager()
-    llm_service = LLMService(embedding_model=model_name, storage_manager=storage)
+
+    # Initialize LLM service without directly passing embedding_model
+    llm_service = LLMService(storage_manager=storage)
+
+    # Update the embedding model in the config if needed
+    if llm_service.embedding_model != model_name:
+        print(
+            "Updating embedding model from "
+            f"{llm_service.embedding_model} to {model_name}"
+        )
+
+        config = storage.get_llm_config()
+        config.embedding_model = model_name
+        storage.save_llm_config(config)
+        llm_service.reload_config()
 
     # Process in batches until all are done
     total_processed = 0

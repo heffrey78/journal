@@ -57,6 +57,94 @@ git commit -m "Update LLM service to use user configurations"
 - Add option to save/favorite generated summaries
 - Test with different configuration options
 
+### Commit 22b: Enhanced LLM Features UI
+```
+git commit -m "Update the UI to use new LLM features"
+- Update the entry view page to include prompt type selection
+- Implement progress tracking for LLM operations
+- Add the favorite summary functionality
+- Update the settings page with new configuration options
+- Add the batch processing capabilities
+- Implement comprehensive error handling and user feedback
+- Test all new UI features with different types of entries and configurations
+
+```
+
+# UI Update Plan for Enhanced LLM Features
+
+Based on the enhanced LLM features we've implemented in the backend, I'll outline a plan to update the UI to leverage these new capabilities. The focus will be on allowing users to take full advantage of the customizable prompts, progress tracking, and favorite summaries features.
+
+## 1. Entry Analysis UI Enhancements
+
+### 1.1. Prompt Type Selection
+- Add a dropdown menu in the entry analysis section that allows users to select different prompt types (default, detailed, creative, concise)
+- Include tooltip explanations for each prompt type to help users understand the differences
+- Add a "View available prompts" link that opens a modal displaying all prompt templates
+
+### 1.2. Progress Indicator
+- Add a progress bar that appears during summarization operations
+- Implement animated loading indicators for embedding generation
+- Add status messages that update as LLM operations progress
+- Include cancel button for long-running operations
+
+### 1.3. Summary Management
+- Add a "Save as Favorite" button to generated summaries
+- Create a "Favorites" tab in the entry view that displays saved summaries
+- Add ability to compare different summary types side-by-side
+- Include timestamp and prompt type information with saved summaries
+
+## 2. Settings Page Enhancements
+
+### 2.1. Prompt Templates Section
+- Add a section to display all available prompt templates
+- Allow users to view and understand when each template is most useful
+- Include examples of output for each prompt type
+- Add prompt usage statistics (which types are used most frequently)
+
+### 2.2. Vector Processing Controls
+- Add a "Process Embeddings" button in settings to manually trigger vector processing
+- Include batch size control for large datasets
+- Display progress during vector processing operations
+- Show statistics on embedding coverage (how many entries have embeddings)
+
+### 2.3. Summary Management Settings
+- Add options to automatically save certain types of summaries
+- Include configuration for maximum number of saved summaries per entry
+- Add export functionality for favorite summaries
+- Include batch processing options for analyzing multiple entries
+
+## 3. Technical Implementation Tasks
+
+### 3.1. Frontend Code Updates
+- Update `main.js` to include functions for interacting with new endpoints
+- Create new UI components for prompt selection and progress tracking
+- Add event listeners for saving favorite summaries
+- Implement client-side caching for prompt templates
+
+### 3.2. HTML Template Updates
+- Add new UI elements to the entry view page
+- Update the settings page with new LLM configuration options
+- Create modals for favorite summary management
+- Add help tooltips for new features
+
+### 3.3. CSS Styling
+- Create styles for progress indicators and loading animations
+- Add styling for favorite summary cards
+- Implement responsive design for new UI elements
+- Ensure consistency with existing design language
+
+## 4. Implementation Process
+
+1. First, update the entry view page to include prompt type selection
+2. Next, implement progress tracking for LLM operations
+3. Add the favorite summary functionality
+4. Update the settings page with new configuration options
+5. Add the batch processing capabilities
+6. Implement comprehensive error handling and user feedback
+7. Test all new UI features with different types of entries and configurations
+
+This plan provides a comprehensive approach to updating the UI to take full advantage of the enhanced LLM features we've implemented in the backend. The updates focus on usability, providing clear feedback to users, and enabling more customized and personalized interactions with the LLM capabilities.
+
 ## Phase 10: Image Storage & Management
 
 ### Commit 23: Backend Image Storage Implementation

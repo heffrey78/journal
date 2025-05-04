@@ -70,6 +70,7 @@ class LLMConfig(BaseModel):
         temperature: Controls randomness in generation (0-1)
         max_tokens: Maximum tokens to generate in responses
         system_prompt: Optional system prompt for chat completions
+        min_similarity: Minimum similarity threshold for semantic search (0-1)
     """
 
     id: str = "default"
@@ -80,6 +81,7 @@ class LLMConfig(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 1000
     system_prompt: Optional[str] = None
+    min_similarity: float = 0.5  # Default to 0.5 for more relevant results
 
     class Config:
         """Pydantic config options"""
@@ -93,5 +95,6 @@ class LLMConfig(BaseModel):
                 "temperature": 0.7,
                 "max_tokens": 1000,
                 "system_prompt": "You are a helpful journaling assistant.",
+                "min_similarity": 0.5,
             }
         }

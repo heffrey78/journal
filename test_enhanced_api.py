@@ -150,6 +150,100 @@ def test_summarize_entry(entry_id: str):
         return False
 
 
+def test_custom_prompt_summary(entry_id: str):
+    """Test the custom prompt summarization endpoint with different prompt types"""
+    print(f"\nTesting custom prompt summaries for entry ID: {entry_id}")
+
+    prompt_types = ["default", "detailed", "creative", "concise"]
+    summaries = {}
+
+    for prompt_type in prompt_types:
+        print(f"\nGenerating {prompt_type} summary...")
+        url = f"{BASE_URL}/entries/{entry_id}/summarize/custom"
+        payload = {"prompt_type": prompt_type}
+
+        try:
+            response = requests.post(url, json=payload)
+            print(f"Status code: {response.status_code}")
+
+            if response.status_code == 200:
+                summary = response.json()
+                summaries[prompt_type] = summary
+
+                print(f"=== {prompt_type.upper()} SUMMARY ===")
+                print(f"Summary: {summary['summary'][:150]}...")
+                print("\nKey Topics:")
+                for topic in summary["key_topics"][:3]:
+                    print(f"- {topic}")
+                print(f"\nMood: {summary['mood']}")
+            else:
+                print(f"Error: {response.text}")
+
+        except Exception as e:
+            print(f"Error testing {prompt_type} summary: {e}")
+
+    return summaries
+
+
+def test_favorite_summaries(entry_id: str, summaries: dict):
+    """Test saving and retrieving favorite summaries"""
+    print(f"\nTesting favorite summary functionality for entry ID: {entry_id}")
+
+    if not summaries:
+        print("No summaries available to test with")
+        return False
+
+    # Test saving favorite summaries
+    print("\nSaving summaries as favorites...")
+    saved_count = 0
+
+    for prompt_type, summary in summaries.items():
+        # Add prompt_type to summary
+        summary["prompt_type"] = prompt_type
+
+        url = f"{BASE_URL}/entries/{entry_id}/summaries/favorite"
+        try:
+            response = requests.post(url, json=summary)
+            if response.status_code == 200:
+                saved_count += 1
+                print(f"✓ Saved {prompt_type} summary as favorite")
+            else:
+                print(
+                    f"✗ Failed to save {prompt_type} summary: "
+                    f"{response.status_code} - {response.text}"
+                )
+        except Exception as e:
+            print(f"Error saving {prompt_type} summary: {e}")
+
+    # Test retrieving favorite summaries
+    print("\nRetrieving favorite summaries...")
+    url = f"{BASE_URL}/entries/{entry_id}/summaries/favorite"
+
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            favorites = response.json()
+            print(f"Retrieved {len(favorites)} favorite summaries")
+
+            # Display a sample of the favorites
+            for i, fav in enumerate(favorites[:2], 1):
+                print(f"\nFavorite #{i}:")
+                print(f"Type: {fav.get('prompt_type', 'default')}")
+                print(f"Summary: {fav['summary'][:100]}...")
+                print(f"Topics: {', '.join(fav['key_topics'][:3])}")
+
+            return len(favorites) > 0
+        else:
+            print(
+                "Failed to retrieve favorites: "
+                f"{response.status_code} - {response.text}"
+            )
+            return False
+    except Exception as e:
+        print(f"Error retrieving favorites: {e}")
+        return False
+
+
 def get_latest_entry() -> str:
     """Get the ID of the latest entry for testing"""
     url = f"{BASE_URL}/entries/"
@@ -177,5 +271,14 @@ if __name__ == "__main__":
             sys.exit(1)
         print(f"Using latest entry ID: {entry_id}")
 
-    # Run test for summarization
+    # Run tests for all enhanced features
+    print("\n--- Testing Basic Summarization ---")
     test_summarize_entry(entry_id)
+
+    print("\n--- Testing Custom Prompt Summarization ---")
+    summaries = test_custom_prompt_summary(entry_id)
+
+    print("\n--- Testing Favorite Summaries ---")
+    test_favorite_summaries(entry_id, summaries)
+
+    print("\nAll enhanced API tests completed!")

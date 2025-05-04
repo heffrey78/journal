@@ -569,14 +569,51 @@ document.addEventListener('DOMContentLoaded', () => {
       <div id="detail-content">${formattedContent}</div>
       <div class="entry-actions detail-actions">
         <button id="edit-entry" class="btn" data-id="${entry.id}">Edit Entry</button>
-        <button id="summarize-entry" class="btn" data-id="${entry.id}">Summarize</button>
         <button id="delete-entry" class="btn btn-danger" data-id="${entry.id}">Delete</button>
       </div>
+    `;
+
+    // Add the LLM analysis panel after the main entry content
+    const analysisPanel = document.createElement('div');
+    analysisPanel.id = 'llm-analysis-panel';
+    analysisPanel.className = 'analysis-panel';
+
+    analysisPanel.innerHTML = `
+      <div class="analysis-options">
+        <div class="prompt-selection">
+          <label for="prompt-type">Analysis Type:</label>
+          <select id="prompt-type">
+            <option value="default">Default Summary</option>
+            <option value="detailed">Detailed Analysis</option>
+            <option value="creative">Creative Insights</option>
+            <option value="concise">Concise Summary</option>
+          </select>
+          <span class="tooltip-icon" title="Select the type of analysis to perform on your journal entry">?</span>
+        </div>
+        <button id="summarize-entry" class="btn" data-id="${entry.id}">Analyze Entry</button>
+      </div>
+
       <div id="entry-summary" class="hidden">
-        <h3>Entry Summary</h3>
+        <div class="summary-header">
+          <h3>Entry Analysis</h3>
+          <button id="save-favorite" class="btn btn-small">Save as Favorite</button>
+        </div>
         <div id="summary-content"></div>
+        <div id="summary-progress" class="progress-container hidden">
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <p class="progress-status">Starting analysis...</p>
+        </div>
+      </div>
+
+      <div id="favorite-summaries" class="hidden">
+        <h3>Favorite Analyses</h3>
+        <div id="favorite-summaries-list"></div>
       </div>
     `;
+
+    entryContent.appendChild(analysisPanel);
 
     // Add event listeners for the entry action buttons
     document.getElementById('edit-entry').addEventListener('click', () => {
@@ -613,6 +650,28 @@ document.addEventListener('DOMContentLoaded', () => {
         showTaggedEntries(tag);
       });
     });
+
+    // Add tooltip functionality
+    const tooltipIcon = document.querySelector('.tooltip-icon');
+    if (tooltipIcon) {
+      tooltipIcon.addEventListener('mouseenter', (e) => {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'tooltip';
+        tooltip.textContent = e.target.getAttribute('title');
+        tooltip.style.position = 'absolute';
+        tooltip.style.top = `${e.pageY + 10}px`;
+        tooltip.style.left = `${e.pageX + 10}px`;
+        document.body.appendChild(tooltip);
+      });
+
+      tooltipIcon.addEventListener('mouseleave', () => {
+        const tooltip = document.querySelector('.tooltip');
+        if (tooltip) tooltip.remove();
+      });
+    }
+
+    // Load favorite summaries for this entry when initially displaying it
+    loadFavoriteSummaries(entry.id);
   }
 
   function formatContent(content) {
@@ -691,58 +750,214 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function summarizeEntry(entryId) {
+    // Get selected prompt type
+    const promptTypeSelect = document.getElementById('prompt-type');
+    const promptType = promptTypeSelect ? promptTypeSelect.value : 'default';
+
     const summarySection = document.getElementById('entry-summary');
     const summaryContent = document.getElementById('summary-content');
+    const summaryProgress = document.getElementById('summary-progress');
+    const favoriteButton = document.getElementById('save-favorite');
 
+    // Store the current summary to use with the favorite button
+    let currentSummary = null;
+
+    // Show the summary section and progress indicators
     summarySection.classList.remove('hidden');
-    showLoadingIndicator(summaryContent, 'Generating summary with AI...');
+    summaryProgress.classList.remove('hidden');
+    summaryContent.innerHTML = '';  // Clear previous summary content
+
+    // Set initial progress state
+    const progressFill = summaryProgress.querySelector('.progress-fill');
+    const progressStatus = summaryProgress.querySelector('.progress-status');
+    progressFill.style.width = '10%';
+    progressStatus.textContent = 'Starting analysis...';
 
     try {
-      const response = await fetch(`/entries/${entryId}/summarize`, {
-        method: 'POST'
+      // Simulate progress updates (in a real implementation, this could come from SSE or WebSocket)
+      const progressInterval = setInterval(() => {
+        const currentWidth = parseInt(progressFill.style.width) || 10;
+        if (currentWidth < 90) {
+          const newWidth = Math.min(currentWidth + 10, 90);
+          progressFill.style.width = `${newWidth}%`;
+
+          // Update status message based on progress
+          if (newWidth <= 30) {
+            progressStatus.textContent = 'Processing entry content...';
+          } else if (newWidth <= 60) {
+            progressStatus.textContent = 'Analyzing themes and patterns...';
+          } else {
+            progressStatus.textContent = 'Finalizing results...';
+          }
+        }
+      }, 500);
+
+      // Make the API call with the selected prompt type
+      const response = await fetch(`/entries/${entryId}/summarize/custom`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt_type: promptType }),
       });
+
+      // Clear the progress interval
+      clearInterval(progressInterval);
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || `Error ${response.status}: Failed to generate summary`);
+        throw new Error(errorData.message || `Error ${response.status}: Failed to generate analysis`);
       }
 
-      const summary = await response.json();
+      currentSummary = await response.json();
 
-      // Display the summary
-      summaryContent.innerHTML = `
-        <p><strong>Summary:</strong> ${summary.summary}</p>
-        <p><strong>Key Topics:</strong> ${summary.key_topics.join(', ')}</p>
-        <p><strong>Detected Mood:</strong> ${summary.mood}</p>
-      `;
+      // Complete the progress bar
+      progressFill.style.width = '100%';
+      progressStatus.textContent = 'Analysis complete!';
 
-      notifications.success('Summary generated successfully');
+      // Hide progress after a short delay and display the results
+      setTimeout(() => {
+        summaryProgress.classList.add('hidden');
+
+        // Display the summary with more detailed formatting
+        const formattedTopics = currentSummary.key_topics.map(topic =>
+          `<span class="tag">${topic}</span>`).join('');
+
+        summaryContent.innerHTML = `
+          <div class="summary-card">
+            <p class="summary-content"><strong>Summary:</strong> ${currentSummary.summary}</p>
+            <div class="summary-meta">
+              <div class="summary-topics">
+                <strong>Key Topics:</strong>
+                <div class="topic-tags">${formattedTopics}</div>
+              </div>
+              <p class="summary-mood"><strong>Detected Mood:</strong> ${currentSummary.mood}</p>
+              <p class="summary-type"><em>Analysis type: ${promptType}</em></p>
+            </div>
+          </div>
+        `;
+      }, 1000);
+
+      // Enable the save as favorite button
+      if (favoriteButton) {
+        favoriteButton.disabled = false;
+        favoriteButton.addEventListener('click', () => saveFavoriteSummary(entryId, currentSummary, promptType));
+      }
+
+      // Check for existing favorite summaries and load them
+      loadFavoriteSummaries(entryId);
+
+      notifications.success(`Analysis with '${promptType}' prompt generated successfully`);
     } catch (error) {
       console.error('Summary error:', error);
+      summaryProgress.classList.add('hidden');
 
       // Specific error message for Ollama connection issues
       if (error.message.includes('500')) {
         summaryContent.innerHTML = `
           <div class="error-container">
-            <p>Failed to generate summary. Please ensure Ollama is running on your system.</p>
+            <p>Failed to generate analysis. Please ensure Ollama is running on your system.</p>
             <button class="btn" id="retry-summary">Retry</button>
           </div>
         `;
-        notifications.error('Failed to generate summary: Ollama service may not be available');
+        notifications.error('Failed to generate analysis: Ollama service may not be available');
       } else {
         summaryContent.innerHTML = `
           <div class="error-container">
-            <p>Failed to generate summary: ${error.message}</p>
+            <p>Failed to generate analysis: ${error.message}</p>
             <button class="btn" id="retry-summary">Retry</button>
           </div>
         `;
-        notifications.error(`Failed to generate summary: ${error.message}`);
+        notifications.error(`Failed to generate analysis: ${error.message}`);
+      }
+
+      // Disable favorite button on error
+      if (favoriteButton) {
+        favoriteButton.disabled = true;
       }
 
       // Add retry button functionality
       document.getElementById('retry-summary')?.addEventListener('click', () => {
         summarizeEntry(entryId);
       });
+    }
+  }
+
+  // New function to save a summary as a favorite
+  async function saveFavoriteSummary(entryId, summary, promptType) {
+    try {
+      // Add the prompt type to the summary before saving
+      const summaryToSave = { ...summary, prompt_type: promptType };
+
+      const response = await fetch(`/entries/${entryId}/summaries/favorite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(summaryToSave),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Failed to save favorite`);
+      }
+
+      notifications.success('Summary saved as favorite');
+
+      // Reload favorite summaries to show the newly added one
+      loadFavoriteSummaries(entryId);
+    } catch (error) {
+      console.error('Error saving favorite summary:', error);
+      notifications.error(`Failed to save favorite: ${error.message}`);
+    }
+  }
+
+  // New function to load favorite summaries for an entry
+  async function loadFavoriteSummaries(entryId) {
+    const favoriteSummariesSection = document.getElementById('favorite-summaries');
+    const favoriteSummariesList = document.getElementById('favorite-summaries-list');
+
+    if (!favoriteSummariesSection || !favoriteSummariesList) return;
+
+    try {
+      const response = await fetch(`/entries/${entryId}/summaries/favorite`);
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: Failed to load favorite summaries`);
+      }
+
+      const favorites = await response.json();
+
+      if (favorites && favorites.length > 0) {
+        favoriteSummariesSection.classList.remove('hidden');
+        favoriteSummariesList.innerHTML = ''; // Clear existing favorites
+
+        favorites.forEach(favorite => {
+          const formattedTopics = favorite.key_topics.map(topic =>
+            `<span class="tag">${topic}</span>`).join('');
+
+          const favoriteCard = document.createElement('div');
+          favoriteCard.className = 'favorite-summary-card';
+
+          favoriteCard.innerHTML = `
+            <div class="favorite-summary-header">
+              <h4>Saved Analysis</h4>
+              <span class="favorite-summary-type">${favorite.prompt_type || 'Default'}</span>
+            </div>
+            <p class="favorite-summary-content">${favorite.summary}</p>
+            <div class="favorite-summary-topics">${formattedTopics}</div>
+            <p class="favorite-summary-mood">Mood: ${favorite.mood}</p>
+            <p class="favorite-summary-date">Saved on ${formatDate(favorite.created_at)}</p>
+          `;
+
+          favoriteSummariesList.appendChild(favoriteCard);
+        });
+      } else {
+        favoriteSummariesSection.classList.add('hidden');
+      }
+    } catch (error) {
+      console.error('Error loading favorite summaries:', error);
+      favoriteSummariesSection.classList.add('hidden');
     }
   }
 

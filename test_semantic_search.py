@@ -29,7 +29,7 @@ DEFAULT_QUERIES = [
 def test_api_connection() -> bool:
     """Test the connection to the API server"""
     try:
-        response = requests.get(f"{BASE_URL}/")
+        response = requests.get(f"{BASE_URL}/api/info")
         if response.status_code == 200:
             api_info = response.json()
             print(f"Connected to {api_info['name']} v{api_info['version']}")
@@ -109,7 +109,9 @@ def perform_advanced_search(
         return None
 
 
-def display_search_results(results: List[Dict[str, Any]], max_results: int = 3) -> None:
+def display_search_results(
+    results: List[Dict[str, Any]], max_results: int = 3, show_similarity: bool = False
+) -> None:
     """Display search results in a readable format"""
     if not results:
         print("No results to display")
@@ -121,6 +123,10 @@ def display_search_results(results: List[Dict[str, Any]], max_results: int = 3) 
         print(f"  ID: {entry['id']}")
         if "tags" in entry and entry["tags"]:
             print(f"  Tags: {', '.join(entry['tags'])}")
+
+        # Show similarity score if available and requested
+        if show_similarity and "similarity" in entry:
+            print(f"  Similarity: {entry['similarity']:.4f}")
 
         content = entry.get("content", "")
         if content:
@@ -151,7 +157,7 @@ def compare_search_methods(query: str) -> None:
     semantic_results = perform_simple_search(query, semantic=True)
     if semantic_results:
         print("\nSEMANTIC SEARCH RESULTS:")
-        display_search_results(semantic_results)
+        display_search_results(semantic_results, show_similarity=True)
 
     print("\nOBSERVATIONS:")
     if not text_results and not semantic_results:

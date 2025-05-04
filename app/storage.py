@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import sqlite3
@@ -79,6 +80,22 @@ class StorageManager:
         """
         )
 
+        # Entry summaries table for saved/favorite summaries
+        cursor.execute(
+            """
+        CREATE TABLE IF NOT EXISTS entry_summaries (
+            id TEXT PRIMARY KEY,
+            entry_id TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            key_topics TEXT NOT NULL,
+            mood TEXT NOT NULL,
+            favorite BOOLEAN NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (entry_id) REFERENCES entries(id)
+        )
+        """
+        )
+
         # Create index for faster vector queries
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_vectors_entry_id ON vectors(entry_id)"
@@ -86,6 +103,12 @@ class StorageManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_vectors_has_embedding"
             " ON vectors(embedding) WHERE embedding IS NOT NULL"
+        )
+
+        # Create index for entry summaries
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entry_summaries_entry_id "
+            "ON entry_summaries(entry_id)"
         )
 
         conn.commit()
@@ -715,6 +738,8 @@ class StorageManager:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         tags: Optional[List[str]] = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> List[JournalEntry]:
         """
         Perform a simple text search across journal entries.
@@ -725,6 +750,8 @@ class StorageManager:
             date_from: Optional start date for filtering
             date_to: Optional end date for filtering
             tags: Optional list of tags for filtering
+            limit: Maximum number of entries to return (default: 100)
+            offset: Number of entries to skip for pagination (default: 0)
 
         Returns:
             List of JournalEntry objects that match the query
@@ -732,8 +759,8 @@ class StorageManager:
         # If query is empty, return entries that match other filters
         if not query.strip():
             return self.get_entries(
-                limit=100,  # Higher limit for empty queries
-                offset=0,
+                limit=limit,
+                offset=offset,
                 date_from=date_from,
                 date_to=date_to,
                 tags=tags,
@@ -810,7 +837,12 @@ class StorageManager:
                             if entry:
                                 entries.append(entry)
 
-            return entries
+            # Apply pagination after all search results are collected
+            # fmt: off
+            paginated_entries = entries[offset:offset + limit]
+            # fmt: on
+
+            return paginated_entries
         finally:
             conn.close()
 
@@ -952,5 +984,128 @@ class StorageManager:
             stats["most_used_tags"] = sorted_tags[:5]  # Top 5 tags
 
             return stats
+        finally:
+            conn.close()
+
+    def save_entry_summary(self, entry_id: str, summary) -> bool:
+        """
+        Save an entry summary to the database.
+
+        Args:
+            entry_id: The ID of the journal entry
+            summary: EntrySummary object to save
+
+        Returns:
+            True if successful, False otherwise
+        """
+        from uuid import uuid4
+        from datetime import datetime
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            # Generate a unique ID for the summary
+            summary_id = str(uuid4())
+
+            cursor.execute(
+                """
+                INSERT INTO entry_summaries (
+                    id, entry_id, summary, key_topics, mood,
+                    favorite, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    summary_id,
+                    entry_id,
+                    summary.summary,
+                    json.dumps(summary.key_topics),
+                    summary.mood,
+                    1 if summary.favorite else 0,
+                    datetime.now().isoformat(),
+                ),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error saving entry summary: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_entry_summaries(self, entry_id: str) -> List:
+        """
+        Get all summaries for a specific entry.
+
+        Args:
+            entry_id: The ID of the journal entry
+
+        Returns:
+            List of EntrySummary objects
+        """
+        from app.llm_service import EntrySummary
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, summary, key_topics, mood, favorite, created_at
+                FROM entry_summaries
+                WHERE entry_id = ? AND favorite = 1
+                ORDER BY created_at DESC
+                """,
+                (entry_id,),
+            )
+
+            summaries = []
+            for row in cursor.fetchall():
+                (
+                    summary_id,
+                    summary_text,
+                    key_topics_json,
+                    mood,
+                    favorite,
+                    created_at,
+                ) = row
+
+                # Create EntrySummary object
+                summary = EntrySummary(
+                    summary=summary_text,
+                    key_topics=json.loads(key_topics_json),
+                    mood=mood,
+                    favorite=bool(favorite),
+                )
+                summaries.append(summary)
+
+            return summaries
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error retrieving entry summaries: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def delete_entry_summary(self, summary_id: str) -> bool:
+        """
+        Delete an entry summary by its ID.
+
+        Args:
+            summary_id: The ID of the summary to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM entry_summaries WHERE id = ?", (summary_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error deleting entry summary: {e}")
+            return False
         finally:
             conn.close()

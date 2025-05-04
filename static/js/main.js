@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const newEntryLink = document.getElementById('new-entry-link');
   const searchLink = document.getElementById('search-link');
 
+  // Markdown editor instance
+  let markdownEditor = null;
+
   // Sections
   const welcomeSection = document.getElementById('welcome');
   const entryFormSection = document.getElementById('entry-form');
@@ -180,6 +183,74 @@ document.addEventListener('DOMContentLoaded', () => {
     // Show the requested section
     section.classList.remove('hidden');
     section.classList.add('active');
+
+    // Initialize markdown editor when showing the form
+    if (section === entryFormSection) {
+      initMarkdownEditor();
+    }
+  }
+
+  // Initialize Markdown Editor
+  function initMarkdownEditor() {
+    const contentInput = document.getElementById('content');
+    if (!contentInput) return;
+
+    // If editor is already initialized, don't recreate it
+    if (markdownEditor) return;
+
+    // Initialize EasyMDE with configuration options
+    markdownEditor = new EasyMDE({
+      element: contentInput,
+      spellChecker: true,
+      autosave: {
+        enabled: true,
+        delay: 5000,
+        uniqueId: 'journal-entry-content'
+      },
+      placeholder: 'Write your journal entry here...',
+      toolbar: [
+        'bold', 'italic', 'heading', '|',
+        'quote', 'unordered-list', 'ordered-list', '|',
+        'link', 'image', 'code', '|',
+        'preview', 'side-by-side', 'fullscreen', '|',
+        'guide'
+      ],
+      status: ['autosave', 'lines', 'words', 'cursor'],
+      previewRender: function(plainText) {
+        // Custom preview rendering that matches the app's markdown formatting
+        return formatContent(plainText);
+      }
+    });
+  }
+
+  // Improved format content function to better handle markdown
+  function formatContent(content) {
+    // If we're in a browser environment, use the marked library that EasyMDE depends on
+    if (typeof marked !== 'undefined') {
+      try {
+        // Use the marked library to parse markdown
+        return marked.parse(content);
+      } catch (error) {
+        console.error('Failed to use markdown parser:', error);
+        // Fall back to basic formatting if parser fails
+      }
+    }
+
+    // Basic formatting (fallback) - convert newlines to <br> and handle basic markdown
+    let formatted = content
+      .replace(/\n/g, '<br>')
+      // Format headings (# Heading)
+      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      // Format bold (**bold**)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      // Format italic (*italic*)
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // Format code blocks (```code```)
+      .replace(/```([\s\S]+?)```/g, '<pre><code>$1</code></pre>');
+
+    return formatted;
   }
 
   // API Functions with improved error handling
@@ -509,7 +580,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function formatContent(content) {
-    // Basic formatting - convert newlines to <br> and handle basic markdown
+    // If EasyMDE is available and we're in a browser environment, use its markdown conversion
+    if (typeof EasyMDE !== 'undefined') {
+      try {
+        // Use EasyMDE's built-in markdown parser if available
+        return EasyMDE.prototype.markdown(content);
+      } catch (error) {
+        console.error('Failed to use EasyMDE markdown parser:', error);
+        // Fall back to basic formatting if EasyMDE parser fails
+      }
+    }
+
+    // Basic formatting (fallback) - convert newlines to <br> and handle basic markdown
     let formatted = content
       .replace(/\n/g, '<br>')
       // Format headings (# Heading)
@@ -540,18 +622,36 @@ document.addEventListener('DOMContentLoaded', () => {
   async function editEntry(entry) {
     // Populate the form with entry data
     const titleInput = document.getElementById('title');
-    const contentInput = document.getElementById('content');
     const tagsInput = document.getElementById('tags');
 
     titleInput.value = entry.title;
-    contentInput.value = entry.content;
     tagsInput.value = entry.tags.join(', ');
 
     // Switch to the form view
     showSection(entryFormSection);
 
-    // Note: In future commits, this would be extended to handle updating existing entries
-    // rather than creating new ones
+    // After the section is shown, the markdown editor should be initialized
+    // Set the content to the editor instead of directly to the textarea
+    if (markdownEditor) {
+      markdownEditor.value(entry.content);
+    } else {
+      // Fallback in case the editor isn't initialized yet
+      document.getElementById('content').value = entry.content;
+    }
+
+    // Add hidden input for entry ID to track that we're editing an existing entry
+    let entryIdInput = document.getElementById('entry-id');
+    if (!entryIdInput) {
+      entryIdInput = document.createElement('input');
+      entryIdInput.type = 'hidden';
+      entryIdInput.id = 'entry-id';
+      journalForm.appendChild(entryIdInput);
+    }
+    entryIdInput.value = entry.id;
+
+    // Update submit button text to indicate we're editing
+    const submitButton = journalForm.querySelector('button[type="submit"]');
+    submitButton.textContent = 'Update Entry';
   }
 
   async function summarizeEntry(entryId) {
@@ -800,8 +900,17 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
 
       const titleInput = document.getElementById('title');
-      const contentInput = document.getElementById('content');
       const tagsInput = document.getElementById('tags');
+      const entryIdInput = document.getElementById('entry-id');
+
+      // Get content from markdown editor if available, otherwise from the textarea
+      let content = '';
+      if (markdownEditor) {
+        content = markdownEditor.value();
+      } else {
+        const contentInput = document.getElementById('content');
+        content = contentInput.value;
+      }
 
       // Validate input
       if (!titleInput.value.trim()) {
@@ -810,9 +919,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!contentInput.value.trim()) {
+      if (!content.trim()) {
         notifications.warning('Please enter content for your journal entry.');
-        contentInput.focus();
+        // Focus the markdown editor if available
+        if (markdownEditor) {
+          try {
+            // Give time for the UI to update before focusing
+            setTimeout(() => {
+              if (markdownEditor.codemirror) {
+                markdownEditor.codemirror.focus();
+                // Move cursor to beginning of editor
+                markdownEditor.codemirror.setCursor(0, 0);
+              }
+            }, 100);
+          } catch (e) {
+            console.error('Failed to focus editor:', e);
+          }
+        }
         return;
       }
 
@@ -823,30 +946,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const entryData = {
         title: titleInput.value.trim(),
-        content: contentInput.value.trim(),
+        content: content.trim(),
         tags: tags
       };
 
       // Disable form during submission
       const submitButton = journalForm.querySelector('button[type="submit"]');
+      const isUpdate = entryIdInput && entryIdInput.value;
+      const originalButtonText = submitButton.textContent;
       submitButton.disabled = true;
-      submitButton.innerHTML = '<div class="loading-spinner"></div> Saving...';
+      submitButton.innerHTML = `<div class="loading-spinner"></div> ${isUpdate ? 'Updating' : 'Saving'}...`;
 
       try {
-        const result = await createEntry(entryData);
-        if (result) {
-          notifications.success('Journal entry created successfully!');
-          journalForm.reset();
-          showSection(entryListSection);
-          loadEntries();
+        let result;
+
+        if (isUpdate) {
+          // Update existing entry
+          result = await updateEntry(entryIdInput.value, entryData);
+          if (result) {
+            notifications.success('Journal entry updated successfully!');
+            // Reset the form and remove the entry ID
+            journalForm.reset();
+            entryIdInput.remove();
+
+            // Show the updated entry
+            showEntryDetail(result.id);
+          }
         } else {
-          throw new Error('Failed to create journal entry.');
+          // Create new entry
+          result = await createEntry(entryData);
+          if (result) {
+            notifications.success('Journal entry created successfully!');
+            journalForm.reset();
+            showSection(entryListSection);
+            loadEntries();
+          }
+        }
+
+        if (!result) {
+          throw new Error(`Failed to ${isUpdate ? 'update' : 'create'} journal entry.`);
+        }
+
+        // Clear the markdown editor content
+        if (markdownEditor) {
+          markdownEditor.value('');
+          // Also clear autosave data
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('journal-entry-content');
+          }
         }
       } catch (error) {
         notifications.error(`Error: ${error.message}`);
       } finally {
         submitButton.disabled = false;
-        submitButton.textContent = 'Save Entry';
+        submitButton.textContent = originalButtonText;
       }
     });
   }

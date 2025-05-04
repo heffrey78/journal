@@ -11,6 +11,7 @@ import time
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from app.storage import StorageManager
+from app.models import LLMConfig
 
 # Configure logging
 logging.basicConfig(
@@ -61,30 +62,55 @@ class LLMService:
 
     def __init__(
         self,
-        model_name: str = "qwen3:latest",
-        embedding_model: str = "nomic-embed-text:latest",
         storage_manager: Optional[StorageManager] = None,
-        max_retries: int = 2,
-        retry_delay: float = 1.0,
     ):
         """
         Initialize the LLM service.
 
         Args:
-            model_name: Ollama model to use for generation
-            embedding_model: Ollama model to use for embeddings
             storage_manager: Optional reference to the storage manager
-            max_retries: Maximum number of retries for Ollama API calls
-            retry_delay: Delay between retries in seconds
         """
-        self.model_name = model_name
-        self.embedding_model = embedding_model
         self.storage_manager = storage_manager
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
+
+        # Load configuration from storage if available, otherwise use defaults
+        self.config = LLMConfig()
+        if storage_manager:
+            stored_config = storage_manager.get_llm_config()
+            if stored_config:
+                self.config = stored_config
+
+        # Set instance variables from config
+        self.model_name = self.config.model_name
+        self.embedding_model = self.config.embedding_model
+        self.max_retries = self.config.max_retries
+        self.retry_delay = self.config.retry_delay
+        self.temperature = self.config.temperature
+        self.max_tokens = self.config.max_tokens
+        self.system_prompt = self.config.system_prompt
 
         # Verify Ollama connection on initialization
         self._verify_ollama_connection()
+
+    def reload_config(self):
+        """
+        Reload configuration from storage.
+
+        Call this method after configuration has been updated.
+        """
+        if self.storage_manager:
+            stored_config = self.storage_manager.get_llm_config()
+            if stored_config:
+                self.config = stored_config
+                self.model_name = self.config.model_name
+                self.embedding_model = self.config.embedding_model
+                self.max_retries = self.config.max_retries
+                self.retry_delay = self.config.retry_delay
+                self.temperature = self.config.temperature
+                self.max_tokens = self.config.max_tokens
+                self.system_prompt = self.config.system_prompt
+                logger.info("LLM configuration reloaded from storage")
+                return True
+        return False
 
     def _verify_ollama_connection(self) -> bool:
         """
@@ -220,11 +246,20 @@ class LLMService:
                 model=self.model_name,
                 messages=[
                     {
+                        "role": "system",
+                        "content": self.system_prompt
+                        or "You are a helpful journaling assistant.",
+                    },
+                    {
                         "role": "user",
                         "content": f"Summarize this journal entry. "
                         f"Extract key topics and mood. Return as JSON:\n\n{content}",
-                    }
+                    },
                 ],
+                options={
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens,
+                },
                 format={
                     "type": "object",
                     "properties": {

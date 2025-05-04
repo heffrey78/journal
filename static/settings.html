@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Journal App</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Override styles to fix display issues */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            background-color: white;
+            padding: 0;
+            margin: 0;
+        }
+
+        main {
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background-color: #3498db;
+            color: white;
+            padding: 1rem;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            margin: 0;
+        }
+
+        header nav ul {
+            display: flex;
+            list-style: none;
+            margin: 10px 0 0 0;
+            padding: 0;
+        }
+
+        header nav ul li {
+            margin-right: 20px;
+        }
+
+        header nav ul li a {
+            color: white;
+            text-decoration: none;
+        }
+
+        .settings-container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .tab-content {
+            margin-top: 20px;
+        }
+
+        .tab-content.active {
+            display: block !important;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        select, input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .form-actions {
+            margin-top: 20px;
+        }
+
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Journal App</h1>
+            <nav>
+                <ul>
+                    <li><a href="/static/index.html">Home</a></li>
+                    <li><a href="#" id="new-entry-link">New Entry</a></li>
+                    <li><a href="#" id="view-entries-btn">View Entries</a></li>
+                    <li><a href="#" id="search-link">Search</a></li>
+                    <li><a href="/static/settings.html" class="active">Settings</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main>
+            <section class="settings-container">
+                <h2>Settings</h2>
+
+                <div class="tabs">
+                    <button class="tab-btn active" data-target="llm-settings">LLM Configuration</button>
+                    <button class="tab-btn" data-target="app-settings">App Settings</button>
+                </div>
+
+                <div class="tab-content active" id="llm-settings">
+                    <h3>LLM Configuration</h3>
+                    <form id="llm-config-form" class="settings-form">
+                        <div class="form-group">
+                            <label for="model-name">Text Generation Model:</label>
+                            <select id="model-name" name="model_name" required>
+                                <option value="">Loading models...</option>
+                            </select>
+                            <p class="field-description">The model used for text generation and summarization.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="embedding-model">Embedding Model:</label>
+                            <select id="embedding-model" name="embedding_model" required>
+                                <option value="">Loading models...</option>
+                            </select>
+                            <p class="field-description">The model used for generating embeddings for semantic search.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="temperature">Temperature:</label>
+                            <div class="slider-container">
+                                <input type="range" id="temperature" name="temperature" min="0" max="1" step="0.1" value="0.7">
+                                <span class="slider-value">0.7</span>
+                            </div>
+                            <p class="field-description">Controls randomness in generation. Lower values are more deterministic, higher values more creative.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max-tokens">Max Tokens:</label>
+                            <input type="number" id="max-tokens" name="max_tokens" min="100" max="4000" step="100" value="1000">
+                            <p class="field-description">Maximum number of tokens to generate in responses.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max-retries">Max Retries:</label>
+                            <input type="number" id="max-retries" name="max_retries" min="1" max="5" value="2">
+                            <p class="field-description">Maximum number of retries for API calls.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="retry-delay">Retry Delay (seconds):</label>
+                            <input type="number" id="retry-delay" name="retry_delay" min="0.5" max="5" step="0.5" value="1.0">
+                            <p class="field-description">Delay between retries in seconds.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="system-prompt">System Prompt:</label>
+                            <textarea id="system-prompt" name="system_prompt" rows="4" placeholder="You are a helpful journaling assistant."></textarea>
+                            <p class="field-description">Custom system prompt for the LLM. Leave empty to use the default.</p>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                            <button type="button" id="test-connection" class="btn">Test Connection</button>
+                            <button type="button" id="reset-defaults" class="btn">Reset to Defaults</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="tab-content" id="app-settings">
+                    <h3>App Settings</h3>
+                    <p>App settings will be implemented in a future update.</p>
+                </div>
+            </section>
+        </main>
+
+        <div id="notification-container"></div>
+        <div id="modal-container"></div>
+    </div>
+
+    <!-- Load settings.js first to avoid dependency issues -->
+    <script src="/static/js/settings.js"></script>
+    <!-- Load main.js after settings.js -->
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

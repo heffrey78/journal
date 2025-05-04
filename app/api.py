@@ -6,7 +6,7 @@ from typing import List, Optional, Any
 from datetime import datetime, date
 from pydantic import BaseModel, Field
 
-from app.models import JournalEntry
+from app.models import JournalEntry, LLMConfig
 from app.storage import StorageManager
 from app.llm_service import LLMService, EntrySummary
 
@@ -406,4 +406,87 @@ async def get_stats(storage: StorageManager = Depends(get_storage)):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get statistics: {str(e)}"
+        )
+
+
+@app.get("/config/llm", response_model=LLMConfig, tags=["config"])
+async def get_llm_config(storage: StorageManager = Depends(get_storage)):
+    """Get LLM configuration settings"""
+    try:
+        config = storage.get_llm_config()
+        if not config:
+            # This shouldn't happen as we initialize a default config
+            raise HTTPException(status_code=404, detail="LLM configuration not found")
+        return config
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve LLM configuration: {str(e)}"
+        )
+
+
+@app.put("/config/llm", response_model=LLMConfig, tags=["config"])
+async def update_llm_config(
+    config: LLMConfig,
+    storage: StorageManager = Depends(get_storage),
+    llm: LLMService = Depends(get_llm_service),
+):
+    """Update LLM configuration settings"""
+    try:
+        # Ensure config ID is always "default" for the single-user setup
+        config.id = "default"
+
+        # Validate model names by making a minimal test call
+        # This will raise an exception if the models don't exist
+        try:
+            # Test new model configs with minimal prompts
+            import ollama
+
+            ollama.chat(
+                model=config.model_name, messages=[{"role": "user", "content": "test"}]
+            )
+            ollama.embeddings(model=config.embedding_model, prompt="test")
+        except Exception as model_error:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid model configuration. Error: {str(model_error)}",
+            )
+
+        # Save to database
+        success = storage.save_llm_config(config)
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to save LLM configuration"
+            )
+
+        # Reload configuration in LLM service
+        llm.reload_config()
+
+        return config
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update LLM configuration: {str(e)}"
+        )
+
+
+@app.get("/config/available-models", tags=["config"])
+async def get_available_models():
+    """Get list of available Ollama models"""
+    try:
+        import ollama
+
+        # The Ollama Python library returns a ListResponse object
+        response = ollama.list()
+
+        # Extract model names using the correct attributes
+        model_names = []
+        for model in response.models:
+            # The model name is in the 'model' attribute, not 'name'
+            model_names.append(model.model)
+
+        return {"models": model_names}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve available models: {str(e)}"
         )

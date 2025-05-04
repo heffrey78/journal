@@ -55,3 +55,43 @@ class JournalEntry(BaseModel):
                 "tags": ["daily", "thoughts"],
             }
         }
+
+
+class LLMConfig(BaseModel):
+    """
+    Configuration settings for LLM service.
+
+    Attributes:
+        id: Unique identifier (always "default" for single-user setup)
+        model_name: Ollama model to use for text generation
+        embedding_model: Ollama model to use for embeddings
+        max_retries: Maximum number of retries for Ollama API calls
+        retry_delay: Delay between retries in seconds
+        temperature: Controls randomness in generation (0-1)
+        max_tokens: Maximum tokens to generate in responses
+        system_prompt: Optional system prompt for chat completions
+    """
+
+    id: str = "default"
+    model_name: str = "qwen3:latest"
+    embedding_model: str = "nomic-embed-text:latest"
+    max_retries: int = 2
+    retry_delay: float = 1.0
+    temperature: float = 0.7
+    max_tokens: int = 1000
+    system_prompt: Optional[str] = None
+
+    class Config:
+        """Pydantic config options"""
+
+        json_schema_extra = {
+            "example": {
+                "model_name": "qwen3:latest",
+                "embedding_model": "nomic-embed-text:latest",
+                "max_retries": 2,
+                "retry_delay": 1.0,
+                "temperature": 0.7,
+                "max_tokens": 1000,
+                "system_prompt": "You are a helpful journaling assistant.",
+            }
+        }

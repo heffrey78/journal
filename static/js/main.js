@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const viewEntriesBtn = document.getElementById('view-entries-btn');
   const searchBtn = document.getElementById('search-btn');
   const welcomeNewEntryBtn = document.getElementById('welcome-new-entry');
+  const newEntryLink = document.getElementById('new-entry-link');
+  const searchLink = document.getElementById('search-link');
 
   // Sections
   const welcomeSection = document.getElementById('welcome');
@@ -21,6 +23,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const entriesContainer = document.getElementById('entries-container');
   const entryContent = document.getElementById('entry-content');
   const searchResults = document.getElementById('search-results');
+
+  // Check hash fragment immediately
+  const handleHashNavigation = () => {
+    console.log("Checking URL hash:", window.location.hash);
+    const hash = window.location.hash;
+
+    if (hash === '#new-entry' && entryFormSection) {
+      console.log("Hash navigation: displaying new entry form");
+      if (journalForm) journalForm.reset();
+      showSection(entryFormSection);
+      return true;
+    } else if (hash === '#search' && searchSection) {
+      console.log("Hash navigation: displaying search section");
+      showSection(searchSection);
+      return true;
+    }
+    return false;
+  };
+
+  // Handle hash changes
+  window.addEventListener('hashchange', handleHashNavigation);
+
+  // Process hash on initial load
+  const hashHandled = handleHashNavigation();
 
   // Notification & dialog utility functions
   const notifications = {
@@ -124,13 +150,32 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 
+  // Hide loading indicator
+  function hideLoadingIndicator(container) {
+    const loadingContainer = container.querySelector('.loading-container');
+    if (loadingContainer) {
+      container.removeChild(loadingContainer);
+    }
+  }
+
+  // Expose these utilities to make them available to other scripts like settings.js
+  // This needs to happen AFTER the functions are defined
+  window.showLoadingIndicator = showLoadingIndicator;
+  window.hideLoadingIndicator = hideLoadingIndicator;
+  window.showConfirmDialog = showConfirmDialog;
+  window.notifications = notifications;
+
   // Navigation functions
   function showSection(section) {
-    // Hide all sections
+    if (!section) return;
+
+    // Hide all sections if they exist
     [welcomeSection, entryFormSection, entryListSection, entryDetailSection, searchSection]
-      .forEach(s => s.classList.remove('active'));
-    [welcomeSection, entryFormSection, entryListSection, entryDetailSection, searchSection]
-      .forEach(s => s.classList.add('hidden'));
+      .filter(s => s) // Filter out null elements
+      .forEach(s => {
+        s.classList.remove('active');
+        s.classList.add('hidden');
+      });
 
     // Show the requested section
     section.classList.remove('hidden');
@@ -671,39 +716,62 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Event Listeners for Navigation
-  newEntryBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    // Reset the form when showing it
-    journalForm.reset();
-    showSection(entryFormSection);
-  });
+  // Event Listeners for Navigation - Only add if elements exist
+  if (newEntryBtn) {
+    newEntryBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Reset the form when showing it
+      if (journalForm) journalForm.reset();
+      showSection(entryFormSection);
+    });
+  }
 
-  viewEntriesBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    showSection(entryListSection);
-    loadEntries();
-  });
+  if (viewEntriesBtn) {
+    viewEntriesBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showSection(entryListSection);
+      loadEntries();
+    });
+  }
 
-  searchBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    showSection(searchSection);
+  if (searchBtn) {
+    searchBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showSection(searchSection);
 
-    // If advanced search is visible and we haven't loaded tags yet
-    const advancedSearchOptions = document.getElementById('advanced-search-options');
-    const tagSelect = document.getElementById('search-tags');
+      // If advanced search is visible and we haven't loaded tags yet
+      const advancedSearchOptions = document.getElementById('advanced-search-options');
+      const tagSelect = document.getElementById('search-tags');
 
-    if (advancedSearchOptions && !advancedSearchOptions.classList.contains('hidden') &&
-        tagSelect && tagSelect.options.length <= 1) {
-      loadSearchTags();
-    }
-  });
+      if (advancedSearchOptions && !advancedSearchOptions.classList.contains('hidden') &&
+          tagSelect && tagSelect.options.length <= 1) {
+        loadSearchTags();
+      }
+    });
+  }
 
-  welcomeNewEntryBtn.addEventListener('click', () => {
-    // Reset the form when showing it
-    journalForm.reset();
-    showSection(entryFormSection);
-  });
+  // Handle navigation links on settings page
+  if (newEntryLink) {
+    newEntryLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.href = '/?action=new';
+    });
+  }
+
+  if (searchLink) {
+    searchLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.href = '/?action=search';
+    });
+  }
+
+  if (welcomeNewEntryBtn) {
+    welcomeNewEntryBtn.addEventListener('click', () => {
+      // Reset the form when showing it
+      if (journalForm) journalForm.reset();
+      showSection(entryFormSection);
+    });
+  }
 
   // Advanced search toggle
   const toggleAdvancedSearch = document.getElementById('toggle-advanced-search');
@@ -727,112 +795,119 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Form submissions with improved error handling
-  journalForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  if (journalForm) {
+    journalForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    const titleInput = document.getElementById('title');
-    const contentInput = document.getElementById('content');
-    const tagsInput = document.getElementById('tags');
+      const titleInput = document.getElementById('title');
+      const contentInput = document.getElementById('content');
+      const tagsInput = document.getElementById('tags');
 
-    // Validate input
-    if (!titleInput.value.trim()) {
-      notifications.warning('Please enter a title for your journal entry.');
-      titleInput.focus();
-      return;
-    }
-
-    if (!contentInput.value.trim()) {
-      notifications.warning('Please enter content for your journal entry.');
-      contentInput.focus();
-      return;
-    }
-
-    // Parse tags
-    const tags = tagsInput.value.trim()
-      ? tagsInput.value.split(',').map(tag => tag.trim())
-      : [];
-
-    const entryData = {
-      title: titleInput.value.trim(),
-      content: contentInput.value.trim(),
-      tags: tags
-    };
-
-    // Disable form during submission
-    const submitButton = journalForm.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    submitButton.innerHTML = '<div class="loading-spinner"></div> Saving...';
-
-    try {
-      const result = await createEntry(entryData);
-      if (result) {
-        notifications.success('Journal entry created successfully!');
-        journalForm.reset();
-        showSection(entryListSection);
-        loadEntries();
-      } else {
-        throw new Error('Failed to create journal entry.');
+      // Validate input
+      if (!titleInput.value.trim()) {
+        notifications.warning('Please enter a title for your journal entry.');
+        titleInput.focus();
+        return;
       }
-    } catch (error) {
-      notifications.error(`Error: ${error.message}`);
-    } finally {
-      submitButton.disabled = false;
-      submitButton.textContent = 'Save Entry';
-    }
-  });
+
+      if (!contentInput.value.trim()) {
+        notifications.warning('Please enter content for your journal entry.');
+        contentInput.focus();
+        return;
+      }
+
+      // Parse tags
+      const tags = tagsInput.value.trim()
+        ? tagsInput.value.split(',').map(tag => tag.trim())
+        : [];
+
+      const entryData = {
+        title: titleInput.value.trim(),
+        content: contentInput.value.trim(),
+        tags: tags
+      };
+
+      // Disable form during submission
+      const submitButton = journalForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      submitButton.innerHTML = '<div class="loading-spinner"></div> Saving...';
+
+      try {
+        const result = await createEntry(entryData);
+        if (result) {
+          notifications.success('Journal entry created successfully!');
+          journalForm.reset();
+          showSection(entryListSection);
+          loadEntries();
+        } else {
+          throw new Error('Failed to create journal entry.');
+        }
+      } catch (error) {
+        notifications.error(`Error: ${error.message}`);
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Save Entry';
+      }
+    });
+  }
 
   // Enhanced search form submission
-  searchForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const searchQuery = document.getElementById('search-query').value;
-    const isSemanticSearch = document.getElementById('semantic-search')?.checked || false;
+  if (searchForm) {
+    searchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const searchQuery = document.getElementById('search-query').value;
+      const isSemanticSearch = document.getElementById('semantic-search')?.checked || false;
 
-    // Get advanced search options
-    const dateFrom = document.getElementById('date-from')?.value || null;
-    const dateTo = document.getElementById('date-to')?.value || null;
+      // Get advanced search options
+      const dateFrom = document.getElementById('date-from')?.value || null;
+      const dateTo = document.getElementById('date-to')?.value || null;
 
-    // Get selected tags (multiple select)
-    const tagsSelect = document.getElementById('search-tags');
-    const selectedTags = tagsSelect ?
-      Array.from(tagsSelect.selectedOptions).map(option => option.value) :
-      [];
+      // Get selected tags (multiple select)
+      const tagsSelect = document.getElementById('search-tags');
+      const selectedTags = tagsSelect ?
+        Array.from(tagsSelect.selectedOptions).map(option => option.value) :
+        [];
 
-    // Build search options
-    const searchOptions = {
-      semantic: isSemanticSearch
-    };
+      // Build search options
+      const searchOptions = {
+        semantic: isSemanticSearch
+      };
 
-    if (dateFrom) searchOptions.date_from = dateFrom;
-    if (dateTo) searchOptions.date_to = dateTo;
-    if (selectedTags.length > 0) searchOptions.tags = selectedTags;
+      if (dateFrom) searchOptions.date_from = dateFrom;
+      if (dateTo) searchOptions.date_to = dateTo;
+      if (selectedTags.length > 0) searchOptions.tags = selectedTags;
 
-    // Validate date range if both dates are provided
-    if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
-      notifications.warning("The 'from date' cannot be after the 'to date'. Please adjust your date range.");
-      return;
-    }
+      // Validate date range if both dates are provided
+      if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+        notifications.warning("The 'from date' cannot be after the 'to date'. Please adjust your date range.");
+        return;
+      }
 
-    // If using semantic search, warn user if Ollama might not be running
-    if (isSemanticSearch) {
-      const warning = document.createElement('div');
-      warning.classList.add('info-banner');
-      warning.innerHTML = 'Using semantic search - this requires Ollama to be running.';
-      searchResults.innerHTML = '';
-      searchResults.appendChild(warning);
+      // If using semantic search, warn user if Ollama might not be running
+      if (isSemanticSearch) {
+        const warning = document.createElement('div');
+        warning.classList.add('info-banner');
+        warning.innerHTML = 'Using semantic search - this requires Ollama to be running.';
+        searchResults.innerHTML = '';
+        searchResults.appendChild(warning);
 
-      setTimeout(() => {
+        setTimeout(() => {
+          performSearch(searchQuery, searchOptions);
+        }, 500);
+      } else {
         performSearch(searchQuery, searchOptions);
-      }, 500);
-    } else {
-      performSearch(searchQuery, searchOptions);
-    }
-  });
+      }
+    });
+  }
 
   // Entry Detail Navigation
-  document.getElementById('back-to-list').addEventListener('click', () => {
-    showSection(entryListSection);
-    loadEntries();
-  });
+  const backToListBtn = document.getElementById('back-to-list');
+  if (backToListBtn) {
+    backToListBtn.addEventListener('click', () => {
+      showSection(entryListSection);
+      loadEntries();
+    });
+  }
 
   // API Connection Status Check
   async function checkApiConnection() {
@@ -892,11 +967,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Check API connection when the app starts
-  checkApiConnection().then(isConnected => {
-    if (isConnected) {
-      // Initialize the application
-      loadEntries();
-    }
-  });
+  // Check API connection when the app starts (only if we're on the main journal page)
+  if (welcomeSection || entryListSection || entryFormSection) {
+    checkApiConnection().then(isConnected => {
+      if (isConnected && entryListSection) {
+        // Initialize the application
+        loadEntries();
+      }
+    });
+  }
+
+  // Check if we need to handle URL actions (e.g., from settings page navigation)
+  const urlParams = new URLSearchParams(window.location.search);
+  const action = urlParams.get('action');
+  const hash = window.location.hash;
+
+  if (action === 'new' && entryFormSection) {
+    if (journalForm) journalForm.reset();
+    showSection(entryFormSection);
+  } else if (action === 'search' && searchSection) {
+    showSection(searchSection);
+  } else if (hash === '#new-entry' && entryFormSection) {
+    // Handle hash-based navigation from settings page
+    if (journalForm) journalForm.reset();
+    showSection(entryFormSection);
+  } else if (hash === '#search' && searchSection) {
+    // Handle hash-based navigation from settings page
+    showSection(searchSection);
+  }
 });

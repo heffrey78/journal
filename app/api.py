@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, Depends, Request, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware  # Add this import
 from typing import List, Optional, Any, Union
 from datetime import datetime, date
 from pydantic import BaseModel, Field
@@ -12,6 +13,15 @@ from app.llm_service import LLMService, EntrySummary
 
 app = FastAPI(
     title="Journal API", description="API for managing journal entries", version="0.1.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Allow requests from Next.js frontend
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 # Mount static files for UI

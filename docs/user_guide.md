@@ -9,6 +9,8 @@ This guide provides detailed instructions on how to use the Journal App, a perso
 - [Search Capabilities](#search-capabilities)
 - [Using Tags](#using-tags)
 - [AI Features](#ai-features)
+- [Using the Next.js Frontend](#using-the-nextjs-frontend)
+- [LLM Configuration](#llm-configuration)
 - [Command Line Interface](#command-line-interface)
 - [Troubleshooting](#troubleshooting)
 
@@ -44,7 +46,7 @@ This guide provides detailed instructions on how to use the Journal App, a perso
    uvicorn main:app --reload
    ```
 
-2. Open your web browser and navigate to `http://localhost:8000`
+2. Open your web browser and navigate to `http://localhost:8000` for the standard web interface, or `http://localhost:3000` for the Next.js frontend (if running - see [Using the Next.js Frontend](#using-the-nextjs-frontend))
 
 ## Working with Journal Entries
 
@@ -181,6 +183,8 @@ Semantic search understands the meaning behind your query and finds conceptually
 > ```
 > python process_embeddings.py
 > ```
+>
+> You also need Ollama running on your system with the embedding model configured in your LLM settings.
 
 ### Advanced Search Options
 
@@ -267,6 +271,99 @@ When using semantic search, the results include relevance information:
 2. The relevant parts of each entry that match your search will be highlighted
 
 > **Note**: For semantic search and AI features to work, you need Ollama running on your system with appropriate models configured. If you receive errors about Ollama connections, check that the service is running.
+
+## Using the Next.js Frontend
+
+Journal App includes a modern Next.js frontend that provides an enhanced user experience while offering all the same features as the standard web interface.
+
+### Starting the Next.js Frontend
+
+1. Make sure the main Journal App backend is running (`python main.py`)
+2. Navigate to the Next.js directory:
+   ```
+   cd journal-app-next
+   ```
+3. Install dependencies (first time only):
+   ```
+   npm install
+   ```
+4. Start the development server:
+   ```
+   npm run dev
+   ```
+5. Open your web browser and navigate to `http://localhost:3000`
+
+### Key Features of the Next.js Frontend
+
+- **Modern UI**: A sleek, responsive interface with light and dark mode support
+- **Enhanced Editor**: Improved Markdown editing experience
+- **Better Navigation**: Smooth transitions between pages and views
+- **Full Feature Parity**: All features from the standard interface are available:
+  - Journal entry creation, viewing, editing, and deletion
+  - Tag management
+  - Basic and semantic search
+  - AI-powered entry analysis
+  - LLM configuration
+
+### Customizing the Interface
+
+The Next.js frontend offers additional customization options in the Settings page:
+
+1. **Appearance Settings**:
+   - Theme: Choose between light, dark, or system-based theme
+   - Font Family: Select your preferred font
+   - Font Size: Adjust the text size
+   - Line Height: Customize line spacing
+
+2. **Editor Settings**:
+   - Toggle word count display
+   - Adjust auto-save interval
+
+## LLM Configuration
+
+The Journal App's AI features rely on Ollama, a lightweight LLM service. You can customize how these AI features behave using the LLM Configuration settings.
+
+### Accessing LLM Settings
+
+#### In Standard Interface:
+1. Click "Settings" in the navigation menu
+2. Select the "LLM Configuration" tab
+
+#### In Next.js Frontend:
+1. Click "Settings" in the navigation menu
+2. Select the "LLM Configuration" tab
+
+### Available Settings
+
+1. **Text Generation Model**: Select the model used for generating entry analyses and summaries
+   - This affects the quality and style of AI-generated content
+   - Recommended: llama3 or similar models
+
+2. **Embedding Model**: Choose the model used for semantic search
+   - This affects the accuracy of semantic search results
+   - Recommended: nomic-embed-text or similar embedding models
+
+3. **Temperature**: Adjust the randomness in AI-generated content
+   - Lower values (0.1-0.4): More deterministic, factual outputs
+   - Medium values (0.5-0.7): Balanced creativity and accuracy
+   - Higher values (0.8-1.0): More creative, varied outputs
+
+4. **Max Tokens**: Set the maximum length of generated responses
+   - Higher values allow longer, more detailed analyses
+   - Lower values produce more concise summaries
+
+5. **System Prompt**: Customize the base instructions given to the AI
+   - Helps shape the overall style and approach of AI analyses
+   - Default: "You are a helpful journaling assistant."
+
+### Testing Your Configuration
+
+After adjusting LLM settings:
+1. Click the "Test Connection" button to verify Ollama can be reached with your settings
+2. If successful, click "Save Changes" to apply the new configuration
+3. Try generating an entry analysis to see the effects of your changes
+
+> **Note**: If you experience errors, ensure Ollama is running and the selected models are available on your system. You can download new models using `ollama pull model_name` in your terminal.
 
 ## Command Line Interface
 

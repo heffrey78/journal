@@ -12,6 +12,7 @@ The Journal App is a personal journaling application designed to help users crea
   - Track analysis progress in real-time
   - Save favorite analyses for future reference
 - **Simple UI**: Clean web interface for creating and searching journal entries
+- **Modern Next.js Frontend**: Alternative frontend with enhanced UI experience and full feature parity
 
 ## Architecture
 
@@ -64,7 +65,35 @@ The application uses a simple architecture with SQLite at its core:
    ```
    python main.py
    ```
-2. Open your browser to `http://localhost:8000` to access the UI
+2. Open your browser to `http://localhost:8000` to access the standard UI
+
+### Using the Next.js Frontend
+
+The Journal App includes a modern alternative frontend built with Next.js:
+
+1. Make sure the API server is running (as above)
+2. Navigate to the Next.js directory:
+   ```
+   cd journal-app-next
+   ```
+3. Install dependencies (first time only):
+   ```
+   npm install
+   ```
+4. Start the development server:
+   ```
+   npm run dev
+   ```
+5. Open your browser to `http://localhost:3000`
+
+The Next.js frontend provides all the same functionality as the standard UI but with an enhanced user experience, including:
+- Light and dark mode support
+- Improved editor interface
+- Better navigation and transitions
+- Full support for semantic search and AI features
+- Additional customization options
+
+For more details, see the [User Guide](/docs/user_guide.md#using-the-nextjs-frontend).
 
 ### Using the CLI
 

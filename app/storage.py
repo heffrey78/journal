@@ -544,9 +544,7 @@ class StorageManager:
             all_results.sort(key=lambda x: x["similarity"], reverse=True)
 
             # Apply pagination
-            # fmt: off
-            paginated_results = all_results[offset: offset + limit]
-            # fmt: on
+            paginated_results = all_results[offset : offset + limit]  # noqa: E203
 
             # Now fetch the complete entries only for the paginated results
             # This avoids loading full entries for all matches
@@ -631,10 +629,9 @@ class StorageManager:
             with open(file_path, "r") as f:
                 content = f.read()
                 # Remove the title header from content as it's stored separately
-                # fmt: off
                 if content.startswith(f"# {title}"):
-                    content = content[len(f"# {title}"):]
-                # fmt: on
+                    # Remove whitespace before colon in slice
+                    content = content[len(f"# {title}") :]  # noqa: E203
                 content = content.strip()
 
             # Create JournalEntry object
@@ -863,9 +860,7 @@ class StorageManager:
                                 entries.append(entry)
 
             # Apply pagination after all search results are collected
-            # fmt: off
-            paginated_entries = entries[offset:offset + limit]
-            # fmt: on
+            paginated_entries = entries[offset : offset + limit]  # noqa: E203
 
             return paginated_entries
         finally:
@@ -1569,3 +1564,138 @@ class StorageManager:
             return False
         finally:
             conn.close()
+
+    def advanced_search(
+        self,
+        query: str = "",
+        tags: Optional[List[str]] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        favorite: Optional[bool] = None,  # Keeping parameter for API compatibility
+        semantic: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[JournalEntry]:
+        """
+        Advanced search for journal entries with multiple filters.
+
+        Args:
+            query: The search query string
+            tags: Optional list of tags to filter entries by
+            date_from: Optional start date for filtering entries
+            date_to: Optional end date for filtering entries
+            favorite: Optional boolean to filter by favorite status
+            (not used - kept for API compatibility)
+            semantic: Whether to use semantic search for the query
+            limit: Maximum number of entries to return
+            offset: Number of entries to skip for pagination
+
+        Returns:
+            List of JournalEntry objects that match the search criteria
+        """
+        # If using semantic search with a query, process it differently
+        if semantic and query.strip():
+            # Import here to avoid circular imports - assuming it's available
+            from app.llm_service import LLMService
+
+            llm_service = LLMService()
+
+            try:
+                # Get query embedding
+                query_embedding = llm_service.get_embedding(query)
+                if query_embedding is not None:
+                    # Get semantic search results
+                    semantic_results = self.semantic_search(
+                        query_embedding=query_embedding,
+                        limit=100,  # Get more results for filtering
+                    )
+
+                    if semantic_results:
+                        # Extract entry IDs from semantic results
+                        entry_ids = [result["entry_id"] for result in semantic_results]
+
+                        # Load full entries
+                        all_entries = []
+                        for entry_id in entry_ids:
+                            entry = self.get_entry(entry_id)
+                            if entry:
+                                all_entries.append(entry)
+
+                        # Apply additional filters (without favorite)
+                        filtered_entries = self._apply_filters(
+                            all_entries, tags, date_from, date_to
+                        )
+
+                        # Apply pagination
+                        return filtered_entries[offset : offset + limit]  # noqa: E203
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Semantic search error: {str(e)}")
+                # Fall back to regular search on error
+
+        # Regular search path (also fallback if semantic search fails)
+
+        # If no query but we have other filters, get entries with filters
+        if not query.strip():
+            # Get all entries matching date and tag filters
+            all_entries = self.get_entries(
+                limit=1000,  # Get more to filter properly
+                offset=0,
+                date_from=date_from,
+                date_to=date_to,
+                tags=tags,
+            )
+
+            # Apply pagination
+            return all_entries[offset : offset + limit]  # noqa: E203
+
+        # Regular text search with additional filtering
+        entries = self.text_search(
+            query=query,
+            date_from=date_from,
+            date_to=date_to,
+            tags=tags,
+            limit=1000,  # Get more entries
+            offset=0,
+        )
+
+        # Apply pagination
+        return entries[offset : offset + limit]  # noqa: E203
+
+    def _apply_filters(
+        self,
+        entries: List[JournalEntry],
+        tags: Optional[List[str]] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+    ) -> List[JournalEntry]:
+        """
+        Apply filters to a list of entries.
+
+        Args:
+            entries: List of JournalEntry objects to filter
+            tags: Optional list of tags to filter by
+            date_from: Optional start date to filter by
+            date_to: Optional end date to filter by
+
+        Returns:
+            Filtered list of JournalEntry objects
+        """
+        filtered = entries
+
+        # Filter by tags
+        if tags and len(tags) > 0:
+            # Split the overly long line into two parts
+            filtered = [
+                e
+                for e in filtered
+                if any(tag.lower() in [t.lower() for t in e.tags] for tag in tags)
+            ]
+
+        # Filter by date range
+        if date_from:
+            filtered = [e for e in filtered if e.created_at >= date_from]
+
+        if date_to:
+            filtered = [e for e in filtered if e.created_at <= date_to]
+
+        return filtered

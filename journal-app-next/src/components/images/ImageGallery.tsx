@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import Image from 'next/image';
 import { imagesApi, ImageMetadata } from '@/lib/api';
 
@@ -8,24 +8,19 @@ interface ImageGalleryProps {
   onImageDelete?: (imageId: string) => void;
 }
 
-const ImageGallery: React.FC<ImageGalleryProps> = ({
+export interface ImageGalleryHandle {
+  refreshImages: () => Promise<void>;
+}
+
+const ImageGallery = forwardRef<ImageGalleryHandle, ImageGalleryProps>(({
   entryId,
   onImageSelect,
   onImageDelete
-}) => {
+}, ref) => {
   const [images, setImages] = useState<ImageMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingErrors, setLoadingErrors] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (entryId) {
-      loadImages();
-    } else {
-      // Load orphaned images if no entry ID is provided
-      loadOrphanedImages();
-    }
-  }, [entryId]);
 
   const loadImages = async () => {
     if (!entryId) return;
@@ -58,6 +53,26 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({
       setIsLoading(false);
     }
   };
+
+  // Expose the refresh method via ref
+  useImperativeHandle(ref, () => ({
+    refreshImages: async () => {
+      if (entryId) {
+        await loadImages();
+      } else {
+        await loadOrphanedImages();
+      }
+    }
+  }));
+
+  useEffect(() => {
+    if (entryId) {
+      loadImages();
+    } else {
+      // Load orphaned images if no entry ID is provided
+      loadOrphanedImages();
+    }
+  }, [entryId]);
 
   const handleDeleteImage = async (imageId: string) => {
     if (!confirm('Are you sure you want to delete this image?')) {
@@ -157,6 +172,6 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({
       ))}
     </div>
   );
-};
+});
 
 export default ImageGallery;

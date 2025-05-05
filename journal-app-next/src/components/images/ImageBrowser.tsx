@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import ImageUploader from './ImageUploader';
-import ImageGallery from './ImageGallery';
+import ImageGallery, { ImageGalleryHandle } from './ImageGallery';
 import { ImageMetadata } from '@/lib/api';
 
 interface ImageBrowserProps {
@@ -15,10 +15,16 @@ const ImageBrowser: React.FC<ImageBrowserProps> = ({
   const [showUploader, setShowUploader] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<ImageMetadata | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const galleryRef = useRef<ImageGalleryHandle>(null);
 
   const handleImageUploaded = (image: ImageMetadata) => {
     setUploadedImage(image);
     setErrorMessage(null);
+
+    // Refresh the gallery to show the newly uploaded image
+    if (galleryRef.current) {
+      galleryRef.current.refreshImages();
+    }
 
     // Hide uploader after successful upload
     setShowUploader(false);
@@ -48,6 +54,7 @@ const ImageBrowser: React.FC<ImageBrowserProps> = ({
         <button
           onClick={() => setShowUploader(!showUploader)}
           className="text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md flex items-center"
+          type="button"
         >
           {showUploader ? 'Hide Uploader' : 'Upload Image'}
         </button>
@@ -71,6 +78,7 @@ const ImageBrowser: React.FC<ImageBrowserProps> = ({
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <ImageGallery
+          ref={galleryRef}
           entryId={entryId}
           onImageSelect={handleImageSelect}
         />

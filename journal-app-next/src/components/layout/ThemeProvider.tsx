@@ -1,46 +1,120 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-
-type Theme = 'light' | 'dark' | 'system';
+import { ColorTheme, FontFamily, ThemePreferences } from '@/lib/types';
+import { defaultTheme, applyThemeVariables, initializeTheme } from '@/lib/themeUtils';
 
 type ThemeContextType = {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
+  theme: ThemePreferences;
+  setColorTheme: (theme: ColorTheme) => void;
+  setFontFamily: (fontFamily: FontFamily) => void;
+  setFontSize: (size: number) => void;
+  setLineHeight: (lineHeight: number) => void;
+  toggleDarkMode: () => void;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('system');
+  const [theme, setTheme] = useState<ThemePreferences>(defaultTheme);
   const [mounted, setMounted] = useState(false);
 
-  // Only run client-side
+  // Load theme settings from localStorage on component mount
   useEffect(() => {
     setMounted(true);
-    // Check if there's a saved theme in localStorage
-    const savedTheme = localStorage.getItem('theme') as Theme | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
+
+    try {
+      // Check for legacy theme setting
+      const savedColorTheme = localStorage.getItem('theme') as ColorTheme | null;
+
+      // Check for full theme settings
+      const savedThemePrefs = localStorage.getItem('themePreferences');
+
+      if (savedThemePrefs) {
+        const parsedTheme = JSON.parse(savedThemePrefs) as ThemePreferences;
+        setTheme(parsedTheme);
+      } else if (savedColorTheme) {
+        // Migrate legacy setting
+        setTheme(prev => ({...prev, colorTheme: savedColorTheme}));
+      }
+
+      // Initialize theme variables
+      initializeTheme();
+    } catch (error) {
+      console.error('Error loading theme preferences:', error);
     }
   }, []);
 
+  // Apply theme changes to document
   useEffect(() => {
     if (!mounted) return;
-    // Apply the theme to document
+
     const root = document.documentElement;
 
-    if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    // Apply color theme
+    if (theme.colorTheme === 'dark' ||
+        (theme.colorTheme === 'system' &&
+         window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       root.classList.add('dark');
+      root.classList.remove('light');
     } else {
       root.classList.remove('dark');
+      root.classList.add('light');
     }
 
-    // Save theme preference
-    if (theme !== 'system') {
-      localStorage.setItem('theme', theme);
-    }
+    // Apply typography and other theme variables
+    applyThemeVariables(theme);
+
+    // Save settings to localStorage
+    localStorage.setItem('themePreferences', JSON.stringify(theme));
+
   }, [theme, mounted]);
+
+  // Listen for system theme preference changes
+  useEffect(() => {
+    if (!mounted || theme.colorTheme !== 'system') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      const root = document.documentElement;
+      if (e.matches) {
+        root.classList.add('dark');
+        root.classList.remove('light');
+      } else {
+        root.classList.remove('dark');
+        root.classList.add('light');
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme.colorTheme, mounted]);
+
+  // Theme setting functions
+  const setColorTheme = (colorTheme: ColorTheme) => {
+    setTheme(prev => ({...prev, colorTheme}));
+  };
+
+  const setFontFamily = (fontFamily: FontFamily) => {
+    setTheme(prev => ({...prev, fontFamily}));
+  };
+
+  const setFontSize = (fontSize: number) => {
+    setTheme(prev => ({...prev, fontSize}));
+  };
+
+  const setLineHeight = (lineHeight: number) => {
+    setTheme(prev => ({...prev, lineHeight}));
+  };
+
+  const toggleDarkMode = () => {
+    setTheme(prev => ({
+      ...prev,
+      colorTheme: prev.colorTheme === 'dark' ? 'light' : 'dark'
+    }));
+  };
 
   // Return early to avoid hydration mismatch
   if (!mounted) {
@@ -48,7 +122,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider
+      value={{
+        theme,
+        setColorTheme,
+        setFontFamily,
+        setFontSize,
+        setLineHeight,
+        toggleDarkMode
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );

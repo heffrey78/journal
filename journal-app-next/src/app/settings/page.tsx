@@ -5,6 +5,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LLMSettings from '@/components/settings/LLMSettings';
+import ThemeSettings from '@/components/theme/ThemeSettings';
 import { AppSettings } from '@/lib/types';
 
 // Default settings
@@ -50,20 +51,6 @@ export default function SettingsPage() {
     try {
       localStorage.setItem('journalSettings', JSON.stringify(settings));
 
-      // Apply theme
-      if (settings.theme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else if (settings.theme === 'light') {
-        document.documentElement.classList.remove('dark');
-      } else {
-        // For system preference, check user preference
-        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      }
-
       setSaveMessage({
         type: 'success',
         text: 'Settings saved successfully.',
@@ -91,7 +78,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLLMSettingsSave = (success: boolean, message: string) => {
+  const handleSettingsSave = (success: boolean = true, message: string = 'Settings saved successfully.') => {
     setSaveMessage({
       type: success ? 'success' : 'error',
       text: message,
@@ -163,91 +150,7 @@ export default function SettingsPage() {
       {currentTab === 'appearance' && (
         <Card className="mb-6">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Appearance</h2>
-
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="theme" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Theme
-              </label>
-              <select
-                id="theme"
-                value={settings.theme}
-                onChange={(e) => setSettings({...settings, theme: e.target.value as 'light' | 'dark' | 'system'})}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="system">System</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="font-family" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Font Family
-              </label>
-              <select
-                id="font-family"
-                value={settings.fontFamily}
-                onChange={(e) => setSettings({...settings, fontFamily: e.target.value})}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Geist Sans">Geist Sans</option>
-                <option value="Geist Mono">Geist Mono</option>
-                <option value="serif">Serif</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="font-size" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Font Size: {settings.fontSize}px
-              </label>
-              <input
-                type="range"
-                id="font-size"
-                min="12"
-                max="24"
-                step="1"
-                value={settings.fontSize}
-                onChange={(e) => setSettings({...settings, fontSize: parseInt(e.target.value, 10)})}
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="line-height" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Line Height: {settings.lineHeight}
-              </label>
-              <input
-                type="range"
-                id="line-height"
-                min="1"
-                max="2.5"
-                step="0.1"
-                value={settings.lineHeight}
-                onChange={(e) => setSettings({...settings, lineHeight: parseFloat(e.target.value)})}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-between mt-6">
-            <Button variant="outline" onClick={handleReset}>
-              Reset to Default
-            </Button>
-            <div className="flex items-center gap-3">
-              {saveMessage && (
-                <p className={`text-sm ${saveMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {saveMessage.text}
-                </p>
-              )}
-              <Button
-                onClick={saveSettings}
-                isLoading={isSaving}
-              >
-                Save Settings
-              </Button>
-            </div>
-          </div>
+          <ThemeSettings onSave={() => handleSettingsSave()} />
         </Card>
       )}
 
@@ -315,7 +218,7 @@ export default function SettingsPage() {
       {currentTab === 'llm' && (
         <Card className="mb-6">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">LLM Configuration</h2>
-          <LLMSettings onSaveComplete={handleLLMSettingsSave} />
+          <LLMSettings onSaveComplete={handleSettingsSave} />
         </Card>
       )}
 

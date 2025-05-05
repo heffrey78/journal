@@ -34,6 +34,17 @@ export interface SearchQuery {
   favorite?: boolean;
 }
 
+// Theme interfaces
+export type ColorTheme = 'light' | 'dark' | 'system';
+export type FontFamily = 'Geist Sans' | 'Geist Mono' | 'serif';
+
+export interface ThemePreferences {
+  colorTheme: ColorTheme;
+  fontFamily: FontFamily;
+  fontSize: number;
+  lineHeight: number;
+}
+
 // Settings interface
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system';

@@ -15,6 +15,7 @@ export default function NewEntryPage() {
   const [tags, setTags] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createdEntryId, setCreatedEntryId] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +35,12 @@ export default function NewEntryPage() {
       };
 
       const createdEntry = await entriesApi.createEntry(newEntry);
-      router.push(`/entries/${createdEntry.id}`);
+      setCreatedEntryId(createdEntry.id);
+
+      // Optional: wait a brief moment before redirecting
+      setTimeout(() => {
+        router.push(`/entries/${createdEntry.id}`);
+      }, 1000);
     } catch (err) {
       console.error('Failed to create entry:', err);
       setError('Failed to create entry. Please try again.');
@@ -51,6 +57,12 @@ export default function NewEntryPage() {
       {error && (
         <div className="bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-4 rounded-md mb-6">
           {error}
+        </div>
+      )}
+
+      {createdEntryId && (
+        <div className="bg-green-100 dark:bg-green-900/20 border border-green-200 dark:border-green-900/30 text-green-700 dark:text-green-300 p-4 rounded-md mb-6">
+          Entry created successfully! Redirecting...
         </div>
       )}
 
@@ -79,6 +91,7 @@ export default function NewEntryPage() {
               onChange={setContent}
               placeholder="Write your journal entry here..."
               autofocus
+              entryId={createdEntryId || undefined}
             />
           </div>
         </div>
@@ -109,7 +122,7 @@ export default function NewEntryPage() {
           <Button
             type="submit"
             isLoading={isSubmitting}
-            disabled={!content.trim()}
+            disabled={!content.trim() || !!createdEntryId}
           >
             Save Entry
           </Button>

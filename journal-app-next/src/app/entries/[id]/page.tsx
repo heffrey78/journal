@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor';
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
@@ -11,15 +11,10 @@ import { entriesApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import { format } from 'date-fns';
 
-interface EntryDetailPageProps {
-  params: {
-    id: string;
-  };
-}
-
-export default function EntryDetailPage({ params }: EntryDetailPageProps) {
+export default function EntryDetailPage() {
   const router = useRouter();
-  const { id } = params;
+  const params = useParams();
+  const id = params.id as string;
 
   const [entry, setEntry] = useState<JournalEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,6 +220,7 @@ export default function EntryDetailPage({ params }: EntryDetailPageProps) {
               <MarkdownEditor
                 value={content}
                 onChange={setContent}
+                entryId={id}
               />
             </div>
           </div>

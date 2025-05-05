@@ -1,6 +1,16 @@
-from fastapi import FastAPI, HTTPException, Query, Depends, Request, status
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Depends,
+    Request,
+    status,
+    UploadFile,
+    File,
+    Form,
+)
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware  # Add this import
 from typing import List, Optional, Any, Union
@@ -730,3 +740,313 @@ async def get_available_models():
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve available models: {str(e)}"
         )
+
+
+@app.post("/images/upload", tags=["images"])
+async def upload_image(
+    file: UploadFile = File(...),
+    entry_id: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Upload an image file and optionally associate it with a journal entry.
+
+    Args:
+        file: The image file uploaded by the user
+        entry_id: Optional ID of a journal entry to associate with this image
+        description: Optional text description of the image
+
+    Returns:
+        Image metadata information
+    """
+    try:
+        # Validate that this is actually an image file
+        content_type = file.content_type
+        if not content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File must be an image, got {content_type}",
+            )
+
+        # Read the file data
+        file_data = await file.read()
+
+        # Save the image using the storage manager's image storage
+        image_info = storage.save_image(
+            file_data=file_data,
+            filename=file.filename,
+            mime_type=content_type,
+            entry_id=entry_id,
+            description=description,
+        )
+
+        return {
+            "id": image_info["id"],
+            "filename": image_info["filename"],
+            "mime_type": image_info["mime_type"],
+            "size": image_info["size"],
+            "entry_id": image_info["entry_id"],
+            "description": image_info["description"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
+
+
+@app.get("/images/{image_id}", tags=["images"])
+async def get_image(
+    image_id: str,
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Get an image by ID and serve it.
+
+    Args:
+        image_id: The ID of the image to retrieve
+
+    Returns:
+        The image file
+    """
+    try:
+        # Get image metadata
+        image_meta = storage.get_image(image_id)
+        if not image_meta:
+            raise HTTPException(
+                status_code=404, detail=f"Image with ID {image_id} not found"
+            )
+
+        # Return the image file
+        return FileResponse(
+            path=image_meta["path"],
+            media_type=image_meta["mime_type"],
+            filename=image_meta["filename"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve image: {str(e)}"
+        )
+
+
+@app.get("/images/{image_id}/info", tags=["images"])
+async def get_image_info(
+    image_id: str,
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Get metadata for an image by ID.
+
+    Args:
+        image_id: The ID of the image to retrieve information for
+
+    Returns:
+        Image metadata
+    """
+    try:
+        # Get image metadata
+        image_meta = storage.get_image(image_id)
+        if not image_meta:
+            raise HTTPException(
+                status_code=404, detail=f"Image with ID {image_id} not found"
+            )
+
+        # Return the metadata without the internal file path
+        return {
+            "id": image_meta["id"],
+            "filename": image_meta["filename"],
+            "mime_type": image_meta["mime_type"],
+            "size": image_meta["size"],
+            "width": image_meta["width"],
+            "height": image_meta["height"],
+            "entry_id": image_meta["entry_id"],
+            "description": image_meta["description"],
+            "created_at": image_meta["created_at"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve image metadata: {str(e)}"
+        )
+
+
+@app.get("/entries/{entry_id}/images", tags=["images", "entries"])
+async def get_entry_images(
+    entry_id: str,
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Get all images associated with a journal entry.
+
+    Args:
+        entry_id: The ID of the journal entry
+
+    Returns:
+        List of image metadata
+    """
+    try:
+        # Check if entry exists
+        entry = storage.get_entry(entry_id)
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+
+        # Get images for this entry
+        images = storage.get_entry_images(entry_id)
+
+        # Return all image metadata
+        return [
+            {
+                "id": img["id"],
+                "filename": img["filename"],
+                "mime_type": img["mime_type"],
+                "size": img["size"],
+                "width": img["width"],
+                "height": img["height"],
+                "description": img["description"],
+                "created_at": img["created_at"],
+            }
+            for img in images
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve entry images: {str(e)}"
+        )
+
+
+@app.delete("/images/{image_id}", tags=["images"])
+async def delete_image(
+    image_id: str,
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Delete an image by ID.
+
+    Args:
+        image_id: The ID of the image to delete
+
+    Returns:
+        Success status
+    """
+    try:
+        # Delete the image
+        success = storage.delete_image(image_id)
+        if not success:
+            raise HTTPException(
+                status_code=404, detail=f"Image with ID {image_id} not found"
+            )
+
+        return {"status": "success", "message": f"Image {image_id} deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
+
+
+@app.patch("/images/{image_id}", tags=["images"])
+async def update_image_metadata(
+    image_id: str,
+    description: Optional[str] = Form(None),
+    entry_id: Optional[str] = Form(None),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Update metadata for an image.
+
+    Args:
+        image_id: The ID of the image to update
+        description: New description for the image
+        entry_id: New journal entry association for the image
+
+    Returns:
+        Updated image metadata
+    """
+    try:
+        # Create updates dictionary with non-None values
+        updates = {}
+        if description is not None:
+            updates["description"] = description
+        if entry_id is not None:
+            updates["entry_id"] = entry_id
+
+        # Update the image metadata
+        updated_meta = storage.update_image_metadata(image_id, updates)
+        if not updated_meta:
+            raise HTTPException(
+                status_code=404, detail=f"Image with ID {image_id} not found"
+            )
+
+        # Return the updated metadata without the internal file path
+        return {
+            "id": updated_meta["id"],
+            "filename": updated_meta["filename"],
+            "mime_type": updated_meta["mime_type"],
+            "size": updated_meta["size"],
+            "width": updated_meta["width"],
+            "height": updated_meta["height"],
+            "entry_id": updated_meta["entry_id"],
+            "description": updated_meta["description"],
+            "created_at": updated_meta["created_at"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update image metadata: {str(e)}"
+        )
+
+
+@app.get("/images/", tags=["images"])
+async def list_images(
+    entry_id: Optional[str] = None,
+    orphaned: bool = False,
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    List images with optional filtering.
+
+    Args:
+        entry_id: Optional ID of journal entry to filter images by
+        orphaned: If true, return only images not associated with any entry
+
+    Returns:
+        List of image metadata
+    """
+    try:
+        if orphaned:
+            # Get orphaned images
+            images = storage.get_orphaned_images()
+        elif entry_id:
+            # Get images for specific entry
+            images = storage.get_entry_images(entry_id)
+        else:
+            # This would be a future feature to get all images
+            # For now, we can return an empty list or implement it in storage
+            # This could be paginated in the future
+            raise HTTPException(
+                status_code=400, detail="Must specify either entry_id or orphaned=true"
+            )
+
+        # Return image metadata
+        return [
+            {
+                "id": img["id"],
+                "filename": img["filename"],
+                "mime_type": img["mime_type"],
+                "size": img["size"],
+                "width": img["width"],
+                "height": img["height"],
+                "entry_id": img.get("entry_id"),
+                "description": img["description"],
+                "created_at": img["created_at"],
+            }
+            for img in images
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list images: {str(e)}")

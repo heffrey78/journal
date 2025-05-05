@@ -2,11 +2,27 @@ import axios from 'axios';
 
 // Configure base URL for API requests
 const api = axios.create({
+  // Use explicit http://localhost:8000 instead of relying only on environment variables
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   headers: {
     'Content-Type': 'application/json',
   },
+  // Add timeout to prevent hanging requests
+  timeout: 10000,
 });
+
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Log connection errors with more context
+    if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
+      console.error('API connection error. Make sure the backend server is running at:',
+        process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000');
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Journal entry type definitions
 export interface JournalEntry {
@@ -28,6 +44,32 @@ export interface EntrySummary {
   prompt_type?: string;
   created_at?: string;
   id?: string;
+}
+
+// Image metadata interface
+export interface ImageMetadata {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  width?: number;
+  height?: number;
+  entry_id?: string;
+  description?: string;
+  created_at: string;
+  url?: string;
+}
+
+// LLM Configuration interface
+export interface LLMConfig {
+  id: string;
+  model_name: string;
+  embedding_model: string;
+  temperature: number;
+  max_tokens: number;
+  semantic_search_threshold: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // API functions for entries
@@ -52,7 +94,7 @@ export const entriesApi = {
 
   // Update an existing entry
   updateEntry: async (id: string, entry: Partial<JournalEntry>): Promise<JournalEntry> => {
-    const response = await api.put(`/entries/${id}`, entry);
+    const response = await api.patch(`/entries/${id}`, entry);
     return response.data;
   },
 
@@ -164,4 +206,93 @@ export const llmApi = {
   }
 };
 
-export default { entriesApi, searchApi, tagsApi, llmApi };
+// API functions for images
+export const imagesApi = {
+  // Upload an image
+  uploadImage: async (file: File, entryId?: string, description?: string): Promise<ImageMetadata> => {
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (entryId) {
+      formData.append('entry_id', entryId);
+    }
+
+    if (description) {
+      formData.append('description', description);
+    }
+
+    // Use custom config for multipart form data
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+
+    const response = await api.post('/images/upload', formData, config);
+    return response.data;
+  },
+
+  // Get image metadata
+  getImageInfo: async (imageId: string): Promise<ImageMetadata> => {
+    const response = await api.get(`/images/${imageId}/info`);
+    return {
+      ...response.data,
+      url: `${api.defaults.baseURL}/images/${imageId}`,
+    };
+  },
+
+  // Get all images for an entry
+  getEntryImages: async (entryId: string): Promise<ImageMetadata[]> => {
+    const response = await api.get(`/entries/${entryId}/images`);
+    // Add URL property to each image for convenience
+    return response.data.map((img: ImageMetadata) => ({
+      ...img,
+      url: `${api.defaults.baseURL}/images/${img.id}`,
+    }));
+  },
+
+  // Delete an image
+  deleteImage: async (imageId: string): Promise<void> => {
+    await api.delete(`/images/${imageId}`);
+  },
+
+  // Update image metadata
+  updateImageMetadata: async (
+    imageId: string,
+    updates: { description?: string; entry_id?: string }
+  ): Promise<ImageMetadata> => {
+    const formData = new FormData();
+
+    if (updates.description !== undefined) {
+      formData.append('description', updates.description);
+    }
+
+    if (updates.entry_id !== undefined) {
+      formData.append('entry_id', updates.entry_id);
+    }
+
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+
+    const response = await api.patch(`/images/${imageId}`, formData, config);
+    return {
+      ...response.data,
+      url: `${api.defaults.baseURL}/images/${response.data.id}`,
+    };
+  },
+
+  // Get orphaned images (not associated with any entry)
+  getOrphanedImages: async (): Promise<ImageMetadata[]> => {
+    const response = await api.get('/images/?orphaned=true');
+    return response.data.map((img: ImageMetadata) => ({
+      ...img,
+      url: `${api.defaults.baseURL}/images/${img.id}`,
+    }));
+  },
+};
+
+export default { entriesApi, searchApi, tagsApi, llmApi, imagesApi };

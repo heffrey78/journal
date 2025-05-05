@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
-  swcMinify: true,
+  // Removed swcMinify as it's no longer needed in Next.js 15
   async rewrites() {
     return [
       {
@@ -13,7 +13,15 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    domains: ['localhost'],
+    // Replace domains with remotePatterns as per warning
+    remotePatterns: [
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '8000',
+        pathname: '/images/**',
+      },
+    ],
   }
 };
 

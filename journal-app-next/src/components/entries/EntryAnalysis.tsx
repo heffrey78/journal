@@ -118,8 +118,8 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
   };
 
   return (
-    <div className="mt-8 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+    <div className="mt-8 bg-card text-card-foreground rounded-lg shadow-md p-6">
+      <h2 className="text-xl font-semibold mb-4">
         AI Entry Analysis
       </h2>
 
@@ -130,7 +130,7 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
               Analysis Type:
             </label>
             {isLoadingConfig ? (
-              <div className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500">
+              <div className="w-full sm:w-auto px-3 py-2 border border-border rounded-md bg-card text-muted-foreground">
                 Loading options...
               </div>
             ) : (
@@ -138,7 +138,7 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
                 id="prompt-type"
                 value={promptType}
                 onChange={(e) => setPromptType(e.target.value)}
-                className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className="w-full sm:w-auto px-3 py-2 border border-border rounded-md bg-card text-card-foreground"
                 disabled={isAnalyzing}
               >
                 {promptTypes.map(type => (

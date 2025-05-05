@@ -33,6 +33,49 @@ export function applyThemeVariables(theme: ThemePreferences) {
       body.style.fontFamily = 'Georgia, Times, "Times New Roman", serif';
       break;
   }
+
+  // Check if we need to apply dark mode colors (either explicit dark mode or system preference)
+  const isDarkMode = theme.colorTheme === 'dark' ||
+    (theme.colorTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  // Apply base color theme
+  if (isDarkMode) {
+    // Dark mode colors
+    root.style.setProperty('--background', '#0a0a0a');
+    root.style.setProperty('--foreground', '#ededed');
+    root.style.setProperty('--card', '#1a1a1a');
+    root.style.setProperty('--card-foreground', '#ededed');
+    root.style.setProperty('--popover', '#1a1a1a');
+    root.style.setProperty('--popover-foreground', '#ededed');
+    root.style.setProperty('--primary', '#3b82f6');
+    root.style.setProperty('--primary-foreground', '#ffffff');
+    root.style.setProperty('--secondary', '#1f2937');
+    root.style.setProperty('--secondary-foreground', '#f3f4f6');
+    root.style.setProperty('--muted', '#374151');
+    root.style.setProperty('--muted-foreground', '#9ca3af');
+    root.style.setProperty('--accent', '#075985');
+    root.style.setProperty('--accent-foreground', '#e0f2fe');
+    root.style.setProperty('--border', '#374151');
+    root.style.setProperty('--input', '#374151');
+  } else {
+    // Light mode colors
+    root.style.setProperty('--background', '#ffffff');
+    root.style.setProperty('--foreground', '#171717');
+    root.style.setProperty('--card', '#ffffff');
+    root.style.setProperty('--card-foreground', '#171717');
+    root.style.setProperty('--popover', '#ffffff');
+    root.style.setProperty('--popover-foreground', '#171717');
+    root.style.setProperty('--primary', '#3b82f6');
+    root.style.setProperty('--primary-foreground', '#ffffff');
+    root.style.setProperty('--secondary', '#f3f4f6');
+    root.style.setProperty('--secondary-foreground', '#1f2937');
+    root.style.setProperty('--muted', '#f3f4f6');
+    root.style.setProperty('--muted-foreground', '#6b7280');
+    root.style.setProperty('--accent', '#e0f2fe');
+    root.style.setProperty('--accent-foreground', '#0c4a6e');
+    root.style.setProperty('--border', '#e5e7eb');
+    root.style.setProperty('--input', '#e5e7eb');
+  }
 }
 
 /**

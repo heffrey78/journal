@@ -167,7 +167,7 @@ export default function EntryDetailPage() {
             )}
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+          <div className="bg-card text-card-foreground rounded-lg shadow-md p-6 mb-6">
             <MarkdownRenderer content={entry.content} />
           </div>
 

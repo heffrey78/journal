@@ -8,19 +8,61 @@ type ThemeToggleProps = {
 };
 
 export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
-  const { theme, toggleDarkMode } = useTheme();
+  // Safe default state for isDarkMode
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Use a try-catch to safely access the theme context
+  let themeContext;
+  try {
+    themeContext = useTheme();
+  } catch (e) {
+    console.warn("Theme context not available yet, using fallback");
+  }
 
   // Wait for component to mount to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Determine if dark mode is active
-  const isDarkMode =
-    theme.colorTheme === 'dark' ||
-    (theme.colorTheme === 'system' && typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches);
+  // Update isDarkMode whenever theme changes or system preference changes
+  useEffect(() => {
+    if (!mounted || !themeContext?.theme) return;
+
+    // Function to check if dark mode is currently active
+    const checkIsDarkMode = () => {
+      const { colorTheme } = themeContext.theme;
+      return colorTheme === 'dark' ||
+        (colorTheme === 'system' &&
+         window.matchMedia('(prefers-color-scheme: dark)').matches);
+    };
+
+    // Set the initial state
+    setIsDarkMode(checkIsDarkMode());
+
+    // If using system theme, also listen for system preference changes
+    if (themeContext.theme.colorTheme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+      const handleChange = () => {
+        setIsDarkMode(checkIsDarkMode());
+      };
+
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  }, [mounted, themeContext?.theme]);
+
+  // Handle toggle with fallback
+  const handleToggle = () => {
+    if (themeContext?.toggleDarkMode) {
+      themeContext.toggleDarkMode();
+      // We don't need to manually update isDarkMode here
+      // The effect above will handle it based on the theme change
+    } else {
+      console.warn("Theme toggle not available");
+    }
+  };
 
   if (!mounted) {
     // Return empty div with same dimensions to prevent layout shift
@@ -29,15 +71,15 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
 
   return (
     <button
-      onClick={toggleDarkMode}
+      onClick={handleToggle}
       className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${className}`}
       title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
       aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
     >
       {isDarkMode ? (
-        <SunIcon className="h-6 w-6 text-amber-300" />
+        <MoonIcon className="h-6 w-6 text-gray-100" />
       ) : (
-        <MoonIcon className="h-6 w-6 text-gray-700" />
+        <SunIcon className="h-6 w-6 text-amber-500" />
       )}
     </button>
   );

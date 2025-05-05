@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor';
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
+import EntryAnalysis from '@/components/entries/EntryAnalysis'; // Import the EntryAnalysis component
 import Button from '@/components/ui/Button';
 import { entriesApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
@@ -190,6 +191,9 @@ export default function EntryDetailPage({ params }: EntryDetailPageProps) {
               </div>
             </div>
           )}
+
+          {/* Add the EntryAnalysis component */}
+          <EntryAnalysis entryId={id} />
 
           <div className="mt-6">
             <Button onClick={() => router.push('/entries')}>

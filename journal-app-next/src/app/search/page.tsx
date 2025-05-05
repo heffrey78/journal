@@ -14,12 +14,14 @@ export default function SearchPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showFavorites, setShowFavorites] = useState(false);
+  const [useSemanticSearch, setUseSemanticSearch] = useState(false); // New state for semantic search
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   const [results, setResults] = useState<JournalEntry[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchType, setSearchType] = useState<'basic' | 'semantic' | 'filtered'>('basic'); // Track search type for UI
 
   // Fetch available tags
   useEffect(() => {
@@ -46,12 +48,16 @@ export default function SearchPage() {
     setError(null);
 
     try {
-      const data = await searchApi.textSearch(query);
+      const data = await searchApi.textSearch(query, useSemanticSearch);
       setResults(data);
       setHasSearched(true);
+      setSearchType(useSemanticSearch ? 'semantic' : 'basic');
     } catch (err) {
       console.error('Search failed:', err);
       setError('Failed to perform search. Please try again.');
+      if (useSemanticSearch) {
+        setError('Failed to perform semantic search. Please ensure Ollama is running on your system.');
+      }
       setResults([]);
     } finally {
       setIsSearching(false);
@@ -71,13 +77,18 @@ export default function SearchPage() {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         favorite: showFavorites || undefined,
+        semantic: useSemanticSearch,
       });
 
       setResults(data);
       setHasSearched(true);
+      setSearchType(useSemanticSearch ? 'semantic' : 'filtered');
     } catch (err) {
       console.error('Advanced search failed:', err);
       setError('Failed to perform search. Please try again.');
+      if (useSemanticSearch) {
+        setError('Failed to perform semantic search. Please ensure Ollama is running on your system.');
+      }
       setResults([]);
     } finally {
       setIsSearching(false);
@@ -124,6 +135,19 @@ export default function SearchPage() {
                   >
                     Search
                   </Button>
+                </div>
+
+                {/* Semantic search checkbox */}
+                <div className="mt-2">
+                  <label className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useSemanticSearch}
+                      onChange={(e) => setUseSemanticSearch(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span>Use semantic search (powered by Ollama)</span>
+                  </label>
                 </div>
               </div>
             </form>
@@ -227,9 +251,20 @@ export default function SearchPage() {
           ) : hasSearched ? (
             <>
               <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+                {searchType === 'semantic' && (
+                  <span className="text-blue-500 dark:text-blue-400 mr-2">[Semantic]</span>
+                )}
                 {results.length} {results.length === 1 ? 'result' : 'results'} found
               </h2>
               <EntryList entries={results} />
+
+              {searchType === 'semantic' && results.length > 0 && (
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                  <p className="text-sm">
+                    <strong>Semantic search:</strong> Results are ranked by relevance to your query using AI-powered embeddings.
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">

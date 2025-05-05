@@ -43,3 +43,15 @@ export interface AppSettings {
   showWordCount: boolean;
   autoSaveInterval: number; // in seconds
 }
+
+// LLM Configuration interface
+export interface LLMConfig {
+  id?: string;
+  model_name: string;
+  embedding_model: string;
+  temperature: number;
+  max_tokens: number;
+  max_retries: number;
+  retry_delay: number;
+  system_prompt: string;
+}

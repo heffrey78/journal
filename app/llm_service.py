@@ -51,6 +51,7 @@ class EntrySummary(BaseModel):
     key_topics: List[str]
     mood: str
     favorite: bool = False
+    prompt_type: Optional[str] = None
 
 
 class LLMService:
@@ -60,22 +61,6 @@ class LLMService:
     This service provides embedding generation for semantic search and
     structured output capabilities for journal entry analysis.
     """
-
-    # Define prompt templates for different analysis types
-    PROMPT_TEMPLATES = {
-        "default": "Summarize this journal entry. "
-        "Extract key topics and mood. Return as JSON:",
-        "detailed": "Provide a detailed analysis of this journal entry. "
-        "Identify key themes, emotional states, and important insights. "
-        "Extract key topics and mood. Return as JSON:",
-        "creative": "Read this journal entry and create an insightful, "
-        "reflective summary that captures the essence of the writing. "
-        "Extract key topics and mood. Return as JSON:",
-        "concise": "Create a very brief summary of this journal entry "
-        "in 2-3 sentences. Extract key topics and mood. Return as JSON:",
-        "prompts": "Generate a list of prompts based on this journal entry. "
-        "Help the user reflect on their thoughts and feelings.",
-    }
 
     def __init__(
         self,
@@ -130,6 +115,34 @@ class LLMService:
                 logger.info("LLM configuration reloaded from storage")
                 return True
         return False
+
+    def get_prompt_template(self, prompt_type: str = "default") -> str:
+        """
+        Get the prompt template for the specified type.
+
+        Args:
+            prompt_type: ID of the prompt type to retrieve
+
+        Returns:
+            The prompt template string
+        """
+        # Find the prompt template in the config
+        for pt in self.config.prompt_types:
+            if pt.id == prompt_type:
+                return pt.prompt
+
+        # If not found, use the first available prompt or a fallback
+        if self.config.prompt_types:
+            logger.warning(
+                f"Prompt type '{prompt_type}' not found, using first available"
+            )
+            return self.config.prompt_types[0].prompt
+
+        # Ultimate fallback if no prompts are configured
+        logger.warning("No prompt types available in configuration, using fallback")
+        return (
+            "Summarize this journal entry. Extract key topics and mood. Return as JSON:"
+        )
 
     def _verify_ollama_connection(self) -> bool:
         """
@@ -278,10 +291,8 @@ class LLMService:
             SummarizationError: If summarization fails
         """
         try:
-            # Get appropriate prompt template or fall back to default
-            prompt_template = self.PROMPT_TEMPLATES.get(
-                prompt_type, self.PROMPT_TEMPLATES["default"]
-            )
+            # Get appropriate prompt template from config
+            prompt_template = self.get_prompt_template(prompt_type)
 
             # Report initial progress
             if progress_callback:
@@ -331,7 +342,12 @@ class LLMService:
 
             # Parse the response into the EntrySummary model
             content = response["message"]["content"]
-            return EntrySummary.model_validate_json(content)
+            summary = EntrySummary.model_validate_json(content)
+
+            # Store the prompt type that was used
+            summary.prompt_type = prompt_type
+
+            return summary
         except Exception as e:
             logger.error(f"Error summarizing entry: {e}")
             raise SummarizationError(f"Failed to summarize entry: {e}")

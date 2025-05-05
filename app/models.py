@@ -57,6 +57,21 @@ class JournalEntry(BaseModel):
         }
 
 
+class PromptType(BaseModel):
+    """
+    Represents an analysis prompt type for journal entries.
+
+    Attributes:
+        id: Unique identifier for the prompt type
+        name: Display name for the prompt type
+        prompt: The actual prompt template to use
+    """
+
+    id: str
+    name: str
+    prompt: str
+
+
 class LLMConfig(BaseModel):
     """
     Configuration settings for LLM service.
@@ -71,6 +86,7 @@ class LLMConfig(BaseModel):
         max_tokens: Maximum tokens to generate in responses
         system_prompt: Optional system prompt for chat completions
         min_similarity: Minimum similarity threshold for semantic search (0-1)
+        prompt_types: List of available prompt types for entry analysis
     """
 
     id: str = "default"
@@ -82,6 +98,34 @@ class LLMConfig(BaseModel):
     max_tokens: int = 1000
     system_prompt: Optional[str] = None
     min_similarity: float = 0.5  # Default to 0.5 for more relevant results
+    prompt_types: List[PromptType] = [
+        PromptType(
+            id="default",
+            name="Default Summary",
+            prompt="Summarize this journal entry. Extract key topics and mood. "
+            "Return as JSON:",
+        ),
+        PromptType(
+            id="detailed",
+            name="Detailed Analysis",
+            prompt="Provide a detailed analysis of this journal entry. "
+            "Identify key themes, emotional states, and important insights. "
+            "Extract key topics and mood. Return as JSON:",
+        ),
+        PromptType(
+            id="creative",
+            name="Creative Insights",
+            prompt="Read this journal entry and create an insightful, "
+            "reflective summary that captures the essence of the writing. "
+            "Extract key topics and mood. Return as JSON:",
+        ),
+        PromptType(
+            id="concise",
+            name="Concise Summary",
+            prompt="Create a very brief summary of this journal "
+            "entry in 2-3 sentences. Extract key topics and mood. Return as JSON:",
+        ),
+    ]
 
     class Config:
         """Pydantic config options"""
@@ -96,5 +140,13 @@ class LLMConfig(BaseModel):
                 "max_tokens": 1000,
                 "system_prompt": "You are a helpful journaling assistant.",
                 "min_similarity": 0.5,
+                "prompt_types": [
+                    {
+                        "id": "default",
+                        "name": "Default Summary",
+                        "prompt": "Summarize this journal entry. "
+                        "Extract key topics and mood. Return as JSON:",
+                    }
+                ],
             }
         }

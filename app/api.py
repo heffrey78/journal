@@ -679,31 +679,112 @@ async def update_llm_config(
     config: LLMConfig,
     storage: StorageManager = Depends(get_storage),
     llm: LLMService = Depends(get_llm_service),
+    skip_validation: bool = Query(False, description="Skip Ollama model validation"),
 ):
     """Update LLM configuration settings"""
+    import traceback
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     try:
+        # Log the input config for debugging
+        logger.info(f"Updating LLM config with: {config}")
+
         # Ensure config ID is always "default" for the single-user setup
         config.id = "default"
 
         # Validate model names by making a minimal test call
         # This will raise an exception if the models don't exist
-        try:
-            # Test new model configs with minimal prompts
-            import ollama
+        if not skip_validation:
+            try:
+                # Import here to avoid issues if Ollama is not installed
+                import ollama
+                from concurrent.futures import ThreadPoolExecutor
+                import time
 
-            ollama.chat(
-                model=config.model_name, messages=[{"role": "user", "content": "test"}]
-            )
-            ollama.embeddings(model=config.embedding_model, prompt="test")
-        except Exception as model_error:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid model configuration. Error: {str(model_error)}",
-            )
+                logger.info("Validating models with Ollama...")
+                start_time = time.time()
+
+                # Test connection to Ollama first with a lightweight call
+                try:
+                    models_list = ollama.list()
+                    logger.info(
+                        "Ollama connection successful, found "
+                        f"{len(models_list.models)} models"
+                    )
+
+                    # Check if the specified models exist in the list
+                    model_names = [model.model for model in models_list.models]
+                    if config.model_name not in model_names:
+                        logger.warning(f"Model {config.model_name} not found in Ollama")
+                    if config.embedding_model not in model_names:
+                        logger.warning(
+                            f"Embedding model {config.embedding_model} "
+                            "not found in Ollama"
+                        )
+
+                except Exception as conn_error:
+                    logger.error(f"Failed to connect to Ollama: {conn_error}")
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Cannot connect to Ollama service: {str(conn_error)}",
+                    )
+
+                # Use ThreadPoolExecutor to run model validation with a timeout
+                with ThreadPoolExecutor() as executor:
+                    # Create validation tasks
+                    chat_future = executor.submit(
+                        lambda: ollama.chat(
+                            model=config.model_name,
+                            messages=[{"role": "user", "content": "test"}],
+                        )
+                    )
+                    embed_future = executor.submit(
+                        lambda: ollama.embeddings(
+                            model=config.embedding_model, prompt="test"
+                        )
+                    )
+
+                    # Wait for results with timeout
+                    try:
+                        # Give each model 5 seconds to respond
+                        chat_future.result(timeout=5)
+                        logger.info(f"Chat model {config.model_name} validated")
+                    except Exception as chat_error:
+                        logger.error(f"Chat model validation error: {chat_error}")
+                        # Continue anyway, don't block the config update
+
+                    try:
+                        embed_future.result(timeout=5)
+                        logger.info(
+                            f"Embedding model {config.embedding_model} validated"
+                        )
+                    except Exception as embed_error:
+                        logger.error(f"Embedding model validation error: {embed_error}")
+                        # Continue anyway, don't block the config update
+
+                elapsed = time.time() - start_time
+                logger.info(f"Model validation completed in {elapsed:.2f} seconds")
+
+            except Exception as model_error:
+                logger.error(f"Model validation error: {str(model_error)}")
+                # Don't block the config update, just log the error
+                # We'll save the config anyway since the user might be
+                # setting up models that will be available later
+        else:
+            logger.info("Skipping model validation")
+
+        # Log the prompt types for debugging
+        if config.prompt_types:
+            logger.info(f"Prompt types to save: {len(config.prompt_types)}")
+            for i, pt in enumerate(config.prompt_types):
+                logger.info(f"Prompt type {i}: id={pt.id}, name={pt.name}")
 
         # Save to database
         success = storage.save_llm_config(config)
         if not success:
+            logger.error("Database reported failure when saving LLM config")
             raise HTTPException(
                 status_code=500, detail="Failed to save LLM configuration"
             )
@@ -715,6 +796,8 @@ async def update_llm_config(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Unexpected error in update_llm_config: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500, detail=f"Failed to update LLM configuration: {str(e)}"
         )

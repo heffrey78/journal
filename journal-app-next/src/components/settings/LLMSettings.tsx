@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LLMConfig } from '@/lib/types';
+import { LLMConfig, PromptType } from '@/lib/types';
 import { llmApi } from '@/lib/api';
 import Button from '@/components/ui/Button';
 
@@ -11,7 +11,29 @@ const defaultLLMConfig: LLMConfig = {
   max_tokens: 1000,
   max_retries: 2,
   retry_delay: 1.0,
-  system_prompt: 'You are a helpful journaling assistant.'
+  system_prompt: 'You are a helpful journaling assistant.',
+  prompt_types: [
+    {
+      id: 'default',
+      name: 'Default Summary',
+      prompt: 'Summarize this journal entry. Extract key topics and mood. Return as JSON:'
+    },
+    {
+      id: 'detailed',
+      name: 'Detailed Analysis',
+      prompt: 'Provide a detailed analysis of this journal entry. Identify key themes, emotional states, and important insights. Extract key topics and mood. Return as JSON:'
+    },
+    {
+      id: 'creative',
+      name: 'Creative Insights',
+      prompt: 'Read this journal entry and create an insightful, reflective summary that captures the essence of the writing. Extract key topics and mood. Return as JSON:'
+    },
+    {
+      id: 'concise',
+      name: 'Concise Summary',
+      prompt: 'Create a very brief summary of this journal entry in 2-3 sentences. Extract key topics and mood. Return as JSON:'
+    }
+  ]
 };
 
 interface LLMSettingsProps {
@@ -31,6 +53,12 @@ const LLMSettings: React.FC<LLMSettingsProps> = ({ onSaveComplete }) => {
     message: string;
   }>({ status: 'none', message: '' });
 
+  // State for prompt type management
+  const [editingPromptIndex, setEditingPromptIndex] = useState<number | null>(null);
+  const [newPrompt, setNewPrompt] = useState<PromptType>({ id: '', name: '', prompt: '' });
+  const [isAddingPrompt, setIsAddingPrompt] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
+
   // Load configuration and available models
   useEffect(() => {
     const loadConfig = async () => {
@@ -40,6 +68,12 @@ const LLMSettings: React.FC<LLMSettingsProps> = ({ onSaveComplete }) => {
       try {
         // Load LLM configuration
         const configData = await llmApi.getLLMConfig();
+
+        // If the config doesn't have prompt_types, add the defaults
+        if (!configData.prompt_types) {
+          configData.prompt_types = defaultLLMConfig.prompt_types;
+        }
+
         setConfig(configData);
         setOriginalConfig(configData);
 
@@ -102,6 +136,93 @@ const LLMSettings: React.FC<LLMSettingsProps> = ({ onSaveComplete }) => {
   const handleResetDefaults = () => {
     if (confirm('Are you sure you want to reset to default LLM settings?')) {
       setConfig(defaultLLMConfig);
+    }
+  };
+
+  // Handle editing prompt types
+  const startEditPrompt = (index: number) => {
+    setEditingPromptIndex(index);
+    setNewPrompt({...config.prompt_types![index]});
+    setIsAddingPrompt(false);
+    setPromptError(null);
+  };
+
+  const cancelEditPrompt = () => {
+    setEditingPromptIndex(null);
+    setNewPrompt({ id: '', name: '', prompt: '' });
+    setIsAddingPrompt(false);
+    setPromptError(null);
+  };
+
+  const startAddPrompt = () => {
+    setEditingPromptIndex(null);
+    setNewPrompt({ id: '', name: '', prompt: '' });
+    setIsAddingPrompt(true);
+    setPromptError(null);
+  };
+
+  const validatePrompt = (prompt: PromptType): boolean => {
+    if (!prompt.id.trim() || !prompt.name.trim() || !prompt.prompt.trim()) {
+      setPromptError('All fields are required');
+      return false;
+    }
+
+    // Check if ID is valid (no spaces, special characters)
+    if (!/^[a-z0-9_-]+$/.test(prompt.id)) {
+      setPromptError('ID must contain only lowercase letters, numbers, hyphens, and underscores');
+      return false;
+    }
+
+    // Check if ID already exists (except when editing the same prompt)
+    const idExists = config.prompt_types?.some(
+      (p, idx) => p.id === prompt.id && (editingPromptIndex === null || idx !== editingPromptIndex)
+    );
+
+    if (idExists) {
+      setPromptError('A prompt with this ID already exists');
+      return false;
+    }
+
+    return true;
+  };
+
+  const savePrompt = () => {
+    if (!validatePrompt(newPrompt)) {
+      return;
+    }
+
+    const updatedPrompts = [...(config.prompt_types || [])];
+
+    if (editingPromptIndex !== null) {
+      // Update existing prompt
+      updatedPrompts[editingPromptIndex] = newPrompt;
+    } else {
+      // Add new prompt
+      updatedPrompts.push(newPrompt);
+    }
+
+    setConfig({
+      ...config,
+      prompt_types: updatedPrompts
+    });
+
+    cancelEditPrompt();
+  };
+
+  const deletePrompt = (index: number) => {
+    if (config.prompt_types && config.prompt_types.length <= 1) {
+      setPromptError('You must have at least one prompt type');
+      return;
+    }
+
+    if (confirm('Are you sure you want to delete this prompt type?')) {
+      const updatedPrompts = [...(config.prompt_types || [])];
+      updatedPrompts.splice(index, 1);
+
+      setConfig({
+        ...config,
+        prompt_types: updatedPrompts
+      });
     }
   };
 
@@ -269,6 +390,139 @@ const LLMSettings: React.FC<LLMSettingsProps> = ({ onSaveComplete }) => {
         ></textarea>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           Custom system prompt for the LLM. Leave empty to use the default.
+        </p>
+      </div>
+
+      {/* Analysis Prompt Types section */}
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">Analysis Types</h3>
+          <Button
+            variant="outline"
+            onClick={startAddPrompt}
+            disabled={isAddingPrompt || editingPromptIndex !== null}
+            size="sm"
+          >
+            Add New Type
+          </Button>
+        </div>
+
+        {promptError && (
+          <div className="bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-3 rounded-md mb-4">
+            {promptError}
+          </div>
+        )}
+
+        {/* Form for adding/editing prompt */}
+        {(isAddingPrompt || editingPromptIndex !== null) && (
+          <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4">
+            <h4 className="font-medium mb-3">
+              {isAddingPrompt ? 'Add New Analysis Type' : 'Edit Analysis Type'}
+            </h4>
+
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="prompt-id" className="block text-sm font-medium mb-1">
+                  ID:
+                </label>
+                <input
+                  id="prompt-id"
+                  type="text"
+                  value={newPrompt.id}
+                  onChange={(e) => setNewPrompt({...newPrompt, id: e.target.value})}
+                  placeholder="unique-id-without-spaces"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Unique identifier (lowercase, no spaces)
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="prompt-name" className="block text-sm font-medium mb-1">
+                  Display Name:
+                </label>
+                <input
+                  id="prompt-name"
+                  type="text"
+                  value={newPrompt.name}
+                  onChange={(e) => setNewPrompt({...newPrompt, name: e.target.value})}
+                  placeholder="Display Name"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Name displayed in the dropdown menu
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="prompt-template" className="block text-sm font-medium mb-1">
+                  Prompt Template:
+                </label>
+                <textarea
+                  id="prompt-template"
+                  value={newPrompt.prompt}
+                  onChange={(e) => setNewPrompt({...newPrompt, prompt: e.target.value})}
+                  rows={4}
+                  placeholder="Instructions for the LLM when analyzing an entry..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Template used to generate the analysis. Entry content will be appended to this.
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <Button variant="outline" onClick={cancelEditPrompt} size="sm">
+                  Cancel
+                </Button>
+                <Button onClick={savePrompt} size="sm">
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* List of prompt types */}
+        <div className="space-y-3">
+          {config.prompt_types?.map((promptType, index) => (
+            <div
+              key={promptType.id}
+              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white">{promptType.name}</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">ID: {promptType.id}</p>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => startEditPrompt(index)}
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm"
+                    disabled={isAddingPrompt || editingPromptIndex !== null}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deletePrompt(index)}
+                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm"
+                    disabled={isAddingPrompt || editingPromptIndex !== null}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-2 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60 rounded p-2 max-h-24 overflow-y-auto">
+                {promptType.prompt}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+          These analysis types will be available when analyzing journal entries.
         </p>
       </div>
 

@@ -44,6 +44,13 @@ export interface AppSettings {
   autoSaveInterval: number; // in seconds
 }
 
+// Analysis prompt type interface
+export interface PromptType {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
 // LLM Configuration interface
 export interface LLMConfig {
   id?: string;
@@ -54,4 +61,5 @@ export interface LLMConfig {
   max_retries: number;
   retry_delay: number;
   system_prompt: string;
+  prompt_types?: PromptType[];
 }

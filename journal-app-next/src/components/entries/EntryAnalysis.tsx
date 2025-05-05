@@ -1,19 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { EntrySummary, entriesApi } from '@/lib/api';
+import { llmApi } from '@/lib/api';
+import { PromptType } from '@/lib/types';
 import Button from '@/components/ui/Button';
 
 interface EntryAnalysisProps {
   entryId: string;
 }
 
-const PROMPT_TYPES = [
-  { id: 'default', name: 'Default Summary' },
-  { id: 'detailed', name: 'Detailed Analysis' },
-  { id: 'creative', name: 'Creative Insights' },
-  { id: 'concise', name: 'Concise Summary' }
+// Default prompt types as a fallback
+const DEFAULT_PROMPT_TYPES = [
+  { id: 'default', name: 'Default Summary', prompt: '' },
+  { id: 'detailed', name: 'Detailed Analysis', prompt: '' },
+  { id: 'creative', name: 'Creative Insights', prompt: '' },
+  { id: 'concise', name: 'Concise Summary', prompt: '' }
 ];
 
 const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
+  const [promptTypes, setPromptTypes] = useState<PromptType[]>(DEFAULT_PROMPT_TYPES);
   const [promptType, setPromptType] = useState('default');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -21,6 +25,25 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
   const [error, setError] = useState<string | null>(null);
   const [favoriteSummaries, setFavoriteSummaries] = useState<EntrySummary[]>([]);
   const [showFavoriteSummaries, setShowFavoriteSummaries] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+
+  // Load prompt types from LLM config
+  useEffect(() => {
+    const loadPromptTypes = async () => {
+      try {
+        const config = await llmApi.getLLMConfig();
+        if (config.prompt_types && config.prompt_types.length > 0) {
+          setPromptTypes(config.prompt_types);
+        }
+      } catch (err) {
+        console.error('Failed to load prompt types from config:', err);
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    };
+
+    loadPromptTypes();
+  }, []);
 
   // Fetch favorite summaries on initial load
   useEffect(() => {
@@ -88,6 +111,12 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
     }
   };
 
+  // Find the selected prompt type name
+  const getSelectedPromptTypeName = () => {
+    const promptTypeObj = promptTypes.find(pt => pt.id === promptType);
+    return promptTypeObj?.name || promptType;
+  };
+
   return (
     <div className="mt-8 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
@@ -100,25 +129,31 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
             <label htmlFor="prompt-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Analysis Type:
             </label>
-            <select
-              id="prompt-type"
-              value={promptType}
-              onChange={(e) => setPromptType(e.target.value)}
-              className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              disabled={isAnalyzing}
-            >
-              {PROMPT_TYPES.map(type => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
+            {isLoadingConfig ? (
+              <div className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500">
+                Loading options...
+              </div>
+            ) : (
+              <select
+                id="prompt-type"
+                value={promptType}
+                onChange={(e) => setPromptType(e.target.value)}
+                className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                disabled={isAnalyzing}
+              >
+                {promptTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="mt-2 sm:mt-0">
             <Button
               onClick={handleAnalyzeEntry}
               isLoading={isAnalyzing}
-              disabled={isAnalyzing}
+              disabled={isAnalyzing || isLoadingConfig}
               size="md"
             >
               Analyze Entry
@@ -189,7 +224,7 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
 
                 <p className="mb-1"><strong>Detected Mood:</strong> {currentSummary.mood}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Analysis type: {promptType}
+                  Analysis type: {getSelectedPromptTypeName()}
                 </p>
               </div>
             </div>

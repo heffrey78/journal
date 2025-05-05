@@ -147,6 +147,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const config = await response.json();
             console.log("Current config data:", config);
 
+            // Store the config globally so we can access prompt_types later
+            window.currentConfig = config;
+
             // Populate form with current values
             populateFormWithConfig(config);
         } catch (error) {
@@ -196,26 +199,40 @@ document.addEventListener('DOMContentLoaded', function() {
         event.preventDefault();
         console.log("Saving configuration...");
 
-        // Build configuration object from form
-        const config = {
-            model_name: modelNameSelect.value,
-            embedding_model: embeddingModelSelect.value,
-            temperature: parseFloat(temperatureSlider.value),
-            max_tokens: parseInt(maxTokensInput.value),
-            max_retries: parseInt(maxRetriesInput.value),
-            retry_delay: parseFloat(retryDelayInput.value),
-            system_prompt: systemPromptInput.value || null
-        };
-
-        console.log("Config to save:", config);
+        // Show saving indicator
+        const saveButton = llmConfigForm.querySelector('button[type="submit"]');
+        const originalText = saveButton.textContent;
+        saveButton.disabled = true;
+        saveButton.textContent = "Saving...";
 
         try {
-            const response = await fetch('/config/llm', {
+            // Build configuration object from form
+            const config = {
+                model_name: modelNameSelect.value,
+                embedding_model: embeddingModelSelect.value,
+                temperature: parseFloat(temperatureSlider.value),
+                max_tokens: parseInt(maxTokensInput.value),
+                max_retries: parseInt(maxRetriesInput.value),
+                retry_delay: parseFloat(retryDelayInput.value),
+                system_prompt: systemPromptInput.value || null
+            };
+
+            // Add prompt types if they exist in the current data
+            if (window.currentConfig && window.currentConfig.prompt_types) {
+                config.prompt_types = window.currentConfig.prompt_types;
+            }
+
+            console.log("Config to save:", config);
+
+            // Include the skip_validation parameter to avoid timeouts
+            const response = await fetch('/config/llm?skip_validation=true', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(config)
+                body: JSON.stringify(config),
+                // Set a longer timeout for the request
+                signal: AbortSignal.timeout(30000) // 30 second timeout
             });
 
             console.log("Save config response status:", response.status);
@@ -225,10 +242,46 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(errorData.message || 'Failed to save configuration');
             }
 
-            alert('Configuration saved successfully');
+            // Store the current config for future reference
+            window.currentConfig = await response.json();
+
+            // Show success message
+            const successMsg = document.createElement('div');
+            successMsg.className = 'success-message';
+            successMsg.style.background = '#dff0d8';
+            successMsg.style.color = '#3c763d';
+            successMsg.style.padding = '10px';
+            successMsg.style.margin = '10px 0';
+            successMsg.style.borderRadius = '4px';
+            successMsg.textContent = 'Configuration saved successfully!';
+
+            // Insert after form and automatically remove after 3 seconds
+            llmConfigForm.insertAdjacentElement('afterend', successMsg);
+            setTimeout(() => {
+                successMsg.remove();
+            }, 3000);
         } catch (error) {
             console.error("Error saving configuration:", error);
-            alert('Failed to save configuration: ' + error.message);
+
+            // Show error message
+            const errorMsg = document.createElement('div');
+            errorMsg.className = 'error-message';
+            errorMsg.style.background = '#f2dede';
+            errorMsg.style.color = '#a94442';
+            errorMsg.style.padding = '10px';
+            errorMsg.style.margin = '10px 0';
+            errorMsg.style.borderRadius = '4px';
+            errorMsg.textContent = 'Failed to save configuration: ' + error.message;
+
+            // Insert after form
+            llmConfigForm.insertAdjacentElement('afterend', errorMsg);
+            setTimeout(() => {
+                errorMsg.remove();
+            }, 5000);
+        } finally {
+            // Restore button state
+            saveButton.disabled = false;
+            saveButton.textContent = originalText;
         }
     }
 

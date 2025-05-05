@@ -62,12 +62,20 @@ export interface ImageMetadata {
 
 // LLM Configuration interface
 export interface LLMConfig {
-  id: string;
+  id?: string;
   model_name: string;
   embedding_model: string;
   temperature: number;
   max_tokens: number;
-  semantic_search_threshold: number;
+  max_retries: number;
+  retry_delay: number;
+  system_prompt: string;
+  semantic_search_threshold?: number;
+  prompt_types?: Array<{
+    id: string;
+    name: string;
+    prompt: string;
+  }>;
   created_at?: string;
   updated_at?: string;
 }
@@ -169,7 +177,7 @@ export const tagsApi = {
   },
 };
 
-// API functions for LLM settings
+// LLM API functions
 export const llmApi = {
   // Get LLM configuration
   getLLMConfig: async (): Promise<LLMConfig> => {

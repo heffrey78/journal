@@ -32,10 +32,26 @@ class ConfigStorage(BaseStorage):
                 retry_delay REAL NOT NULL,
                 temperature REAL NOT NULL,
                 max_tokens INTEGER NOT NULL,
-                system_prompt TEXT
+                system_prompt TEXT,
+                min_similarity REAL DEFAULT 0.5
             )
             """
         )
+
+        # Create prompt types table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_types (
+                id TEXT NOT NULL,
+                config_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                PRIMARY KEY (id, config_id),
+                FOREIGN KEY (config_id) REFERENCES config(id)
+            )
+            """
+        )
+
         conn.commit()
         conn.close()
 
@@ -57,9 +73,14 @@ class ConfigStorage(BaseStorage):
         """
         conn = self.get_db_connection()
         cursor = conn.cursor()
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         try:
+            # Save main config
             cursor.execute(
-                "INSERT OR REPLACE INTO config VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO config VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     config.id,
                     config.model_name,
@@ -69,12 +90,32 @@ class ConfigStorage(BaseStorage):
                     config.temperature,
                     config.max_tokens,
                     config.system_prompt,
+                    config.min_similarity,
                 ),
             )
+
+            # Handle prompt types
+            logger.info(f"Saving prompt types for config {config.id}")
+
+            # Delete existing prompt types for this config
+            cursor.execute("DELETE FROM prompt_types WHERE config_id = ?", (config.id,))
+
+            # Insert new prompt types
+            if config.prompt_types:
+                logger.info(f"Saving {len(config.prompt_types)} prompt types")
+                for pt in config.prompt_types:
+                    logger.info(f"Saving prompt type: {pt.id} - {pt.name}")
+                    cursor.execute(
+                        "INSERT INTO prompt_types (id, config_id, name, prompt) "
+                        "VALUES (?, ?, ?, ?)",
+                        (pt.id, config.id, pt.name, pt.prompt),
+                    )
+
             conn.commit()
             return True
         except Exception as e:
-            print(f"Error saving LLM config: {e}")
+            logger.error(f"Error saving LLM config: {e}")
+            conn.rollback()
             return False
         finally:
             conn.close()
@@ -91,12 +132,17 @@ class ConfigStorage(BaseStorage):
         """
         conn = self.get_db_connection()
         cursor = conn.cursor()
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         try:
+            # Get main config
             cursor.execute(
                 """
                 SELECT
                     model_name, embedding_model, max_retries, retry_delay,
-                    temperature, max_tokens, system_prompt
+                    temperature, max_tokens, system_prompt, min_similarity
                 FROM config WHERE id = ?
                 """,
                 (config_id,),
@@ -114,17 +160,61 @@ class ConfigStorage(BaseStorage):
                 temperature,
                 max_tokens,
                 system_prompt,
+                min_similarity,
             ) = row
 
-            return LLMConfig(
-                id=config_id,
-                model_name=model_name,
-                embedding_model=embedding_model,
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                system_prompt=system_prompt,
+            # Get prompt types for this config
+            from app.models import PromptType
+
+            cursor.execute(
+                "SELECT id, name, prompt FROM prompt_types WHERE config_id = ?",
+                (config_id,),
             )
+
+            prompt_types = []
+            for pt_row in cursor.fetchall():
+                pt_id, pt_name, pt_prompt = pt_row
+                logger.info(f"Retrieved prompt type: {pt_id} - {pt_name}")
+                prompt_types.append(
+                    PromptType(id=pt_id, name=pt_name, prompt=pt_prompt)
+                )
+
+            # Create the config with or without prompt types
+            if not prompt_types:
+                logger.info("No prompt types found, using defaults")
+                config = LLMConfig(
+                    id=config_id,
+                    model_name=model_name,
+                    embedding_model=embedding_model,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system_prompt=system_prompt,
+                    min_similarity=min_similarity
+                    if min_similarity is not None
+                    else 0.5,
+                )
+            else:
+                logger.info(f"Found {len(prompt_types)} prompt types")
+                config = LLMConfig(
+                    id=config_id,
+                    model_name=model_name,
+                    embedding_model=embedding_model,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system_prompt=system_prompt,
+                    min_similarity=min_similarity
+                    if min_similarity is not None
+                    else 0.5,
+                    prompt_types=prompt_types,
+                )
+
+            return config
+        except Exception as e:
+            logger.error(f"Error retrieving LLM config: {e}")
+            return None
         finally:
             conn.close()

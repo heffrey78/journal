@@ -79,7 +79,22 @@ class StorageManager:
             retry_delay REAL NOT NULL,
             temperature REAL NOT NULL,
             max_tokens INTEGER NOT NULL,
-            system_prompt TEXT
+            system_prompt TEXT,
+            min_similarity REAL DEFAULT 0.5
+        )
+        """
+        )
+
+        # Prompt types table for LLM analysis types
+        cursor.execute(
+            """
+        CREATE TABLE IF NOT EXISTS prompt_types (
+            id TEXT NOT NULL,
+            config_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            PRIMARY KEY (id, config_id),
+            FOREIGN KEY (config_id) REFERENCES config(id)
         )
         """
         )
@@ -163,9 +178,23 @@ class StorageManager:
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+
         try:
+            # Check the actual table structure
+            cursor.execute("PRAGMA table_info(config)")
+            columns = [info[1] for info in cursor.fetchall()]
+
+            logger = logging.getLogger(__name__)
+            logger.info(f"Config table columns: {columns}")
+
+            # Use a direct approach with explicit column names
             cursor.execute(
-                "INSERT OR REPLACE INTO config VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT OR REPLACE INTO config
+                (id, model_name, embedding_model, max_retries, retry_delay,
+                temperature, max_tokens, system_prompt, min_similarity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     config.id,
                     config.model_name,
@@ -175,12 +204,28 @@ class StorageManager:
                     config.temperature,
                     config.max_tokens,
                     config.system_prompt,
+                    config.min_similarity,
                 ),
             )
+
+            # Delete existing prompt types for this config
+            cursor.execute("DELETE FROM prompt_types WHERE config_id = ?", (config.id,))
+
+            # Insert new prompt types
+            if config.prompt_types:
+                for pt in config.prompt_types:
+                    cursor.execute(
+                        "INSERT INTO prompt_types (id, config_id, name, prompt) "
+                        "VALUES (?, ?, ?, ?)",
+                        (pt.id, config.id, pt.name, pt.prompt),
+                    )
+
             conn.commit()
             return True
         except Exception as e:
-            print(f"Error saving LLM config: {e}")
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error saving LLM config: {e}")
+            conn.rollback()
             return False
         finally:
             conn.close()
@@ -198,11 +243,12 @@ class StorageManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         try:
+            # Get the main config
             cursor.execute(
                 """
                 SELECT
                     model_name, embedding_model, max_retries, retry_delay,
-                    temperature, max_tokens, system_prompt
+                    temperature, max_tokens, system_prompt, min_similarity
                 FROM config WHERE id = ?
                 """,
                 (config_id,),
@@ -220,18 +266,61 @@ class StorageManager:
                 temperature,
                 max_tokens,
                 system_prompt,
+                min_similarity,
             ) = row
 
-            return LLMConfig(
-                id=config_id,
-                model_name=model_name,
-                embedding_model=embedding_model,
-                max_retries=max_retries,
-                retry_delay=retry_delay,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                system_prompt=system_prompt,
+            # Get prompt types for this config
+            cursor.execute(
+                "SELECT id, name, prompt FROM prompt_types WHERE config_id = ?",
+                (config_id,),
             )
+
+            from app.models import PromptType
+
+            prompt_types = []
+            for pt_row in cursor.fetchall():
+                pt_id, pt_name, pt_prompt = pt_row
+                prompt_types.append(
+                    PromptType(id=pt_id, name=pt_name, prompt=pt_prompt)
+                )
+
+            # If no prompt types are found, use the defaults from LLMConfig
+            if not prompt_types:
+                config = LLMConfig(
+                    id=config_id,
+                    model_name=model_name,
+                    embedding_model=embedding_model,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system_prompt=system_prompt,
+                    min_similarity=min_similarity
+                    if min_similarity is not None
+                    else 0.5,
+                )
+            else:
+                # Create config with the retrieved prompt types
+                config = LLMConfig(
+                    id=config_id,
+                    model_name=model_name,
+                    embedding_model=embedding_model,
+                    max_retries=max_retries,
+                    retry_delay=retry_delay,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system_prompt=system_prompt,
+                    min_similarity=min_similarity
+                    if min_similarity is not None
+                    else 0.5,
+                    prompt_types=prompt_types,
+                )
+
+            return config
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error retrieving LLM config: {e}")
+            return None
         finally:
             conn.close()
 

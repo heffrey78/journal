@@ -14,6 +14,9 @@ class JournalEntry(BaseModel):
         created_at: Timestamp when the entry was created
         updated_at: Timestamp when the entry was last updated (optional)
         tags: List of tags associated with the entry
+        folder: Path for organizing entries into folders/notebooks
+        favorite: Boolean indicating whether entry is marked as favorite
+        images: List of image IDs associated with this entry
     """
 
     id: str = Field(default_factory=lambda: datetime.now().strftime("%Y%m%d%H%M%S"))
@@ -22,6 +25,9 @@ class JournalEntry(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: Optional[datetime] = None
     tags: List[str] = []
+    folder: Optional[str] = None
+    favorite: bool = False
+    images: List[str] = []
 
     def update_content(self, new_content: str) -> None:
         """Updates the content and sets updated_at timestamp"""
@@ -42,6 +48,11 @@ class JournalEntry(BaseModel):
             return True
         return False
 
+    def toggle_favorite(self) -> None:
+        """Toggle favorite status and update timestamp"""
+        self.favorite = not self.favorite
+        self.updated_at = datetime.now()
+
     class Config:
         """Pydantic config options"""
 
@@ -53,6 +64,8 @@ class JournalEntry(BaseModel):
                     "This is my first journal entry. It was a good day."
                 ),
                 "tags": ["daily", "thoughts"],
+                "folder": "personal/thoughts",
+                "favorite": False,
             }
         }
 

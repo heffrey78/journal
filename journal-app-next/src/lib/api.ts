@@ -303,4 +303,102 @@ export const imagesApi = {
   },
 };
 
-export default { entriesApi, searchApi, tagsApi, llmApi, imagesApi };
+// API functions for journal organization
+export const organizationApi = {
+  // Get all folders
+  getFolders: async (): Promise<string[]> => {
+    const response = await api.get('/folders/');
+    return response.data;
+  },
+
+  // Create a new folder
+  createFolder: async (folderName: string): Promise<{status: string; message: string}> => {
+    const response = await api.post(`/folders/?folder_name=${encodeURIComponent(folderName)}`);
+    return response.data;
+  },
+
+  // Get entries in a folder
+  getEntriesByFolder: async (
+    folder: string,
+    params?: {
+      limit?: number;
+      offset?: number;
+      dateFrom?: string;
+      dateTo?: string;
+    }
+  ): Promise<JournalEntry[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.dateFrom) queryParams.append('date_from', params.dateFrom);
+    if (params?.dateTo) queryParams.append('date_to', params.dateTo);
+
+    const queryString = queryParams.toString();
+    const url = `/folders/${encodeURIComponent(folder)}/entries${queryString ? `?${queryString}` : ''}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Get favorite entries
+  getFavoriteEntries: async (
+    params?: {
+      limit?: number;
+      offset?: number;
+      dateFrom?: string;
+      dateTo?: string;
+      tag?: string;
+    }
+  ): Promise<JournalEntry[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.dateFrom) queryParams.append('date_from', params.dateFrom);
+    if (params?.dateTo) queryParams.append('date_to', params.dateTo);
+    if (params?.tag) queryParams.append('tag', params.tag);
+
+    const queryString = queryParams.toString();
+    const url = `/entries/favorites${queryString ? `?${queryString}` : ''}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Get entries by date (calendar view)
+  getEntriesByDate: async (
+    date: string, // Format: YYYY-MM-DD
+    params?: {
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<JournalEntry[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+
+    const queryString = queryParams.toString();
+    const url = `/calendar/${date}${queryString ? `?${queryString}` : ''}`;
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Batch update folder for multiple entries
+  batchUpdateFolder: async (
+    entryIds: string[],
+    folder: string | null
+  ): Promise<{status: string; message: string; updated_count: number}> => {
+    const url = `/batch/update-folder${folder ? `?folder=${encodeURIComponent(folder)}` : ''}`;
+    const response = await api.post(url, { entry_ids: entryIds });
+    return response.data;
+  },
+
+  // Batch toggle favorite status for multiple entries
+  batchToggleFavorite: async (
+    entryIds: string[],
+    favorite: boolean
+  ): Promise<{status: string; message: string; updated_count: number}> => {
+    const url = `/batch/favorite?favorite=${favorite}`;
+    const response = await api.post(url, { entry_ids: entryIds });
+    return response.data;
+  },
+};
+
+export default { entriesApi, searchApi, tagsApi, llmApi, imagesApi, organizationApi };

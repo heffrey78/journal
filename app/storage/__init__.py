@@ -72,9 +72,14 @@ class StorageManager:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         tags: Optional[List[str]] = None,
+        folder: Optional[str] = None,
+        favorite: Optional[bool] = None,
     ) -> List[JournalEntry]:
-        """Get entries with optional filtering."""
-        return self.entries.get_entries(limit, offset, date_from, date_to, tags)
+        """Get entries with optional filtering by date, tags, folder, "
+        "and favorite status."""
+        return self.entries.get_entries(
+            limit, offset, date_from, date_to, tags, folder, favorite
+        )
 
     def delete_entry(self, entry_id: str) -> bool:
         """Delete an entry by ID."""
@@ -90,11 +95,24 @@ class StorageManager:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         tags: Optional[List[str]] = None,
+        folder: Optional[str] = None,
+        favorite: Optional[bool] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List[JournalEntry]:
         """Perform text-based search."""
-        return self.entries.text_search(query, date_from, date_to, tags, limit, offset)
+        return self.entries.text_search(
+            query, date_from, date_to, tags, folder, favorite, limit, offset
+        )
+
+    def get_entries_by_date(
+        self,
+        date: datetime,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[JournalEntry]:
+        """Get entries created on a specific date for calendar view."""
+        return self.entries.get_entries_by_date(date, limit, offset)
 
     # Tag methods
 
@@ -262,6 +280,7 @@ class StorageManager:
         semantic: bool = False,
         limit: int = 100,
         offset: int = 0,
+        folder: Optional[str] = None,
     ) -> List[JournalEntry]:
         """
         Advanced search for journal entries with multiple filters.
@@ -296,10 +315,32 @@ class StorageManager:
                             if entry:
                                 all_entries.append(entry)
 
-                        # Apply additional filters
-                        filtered_entries = self.entries._apply_filters(
-                            all_entries, tags, date_from, date_to
-                        )
+                        # Apply additional filters including folder and favorite
+                        filtered_entries = []
+                        for entry in all_entries:
+                            # Check tag filter
+                            if tags and not any(
+                                tag.lower() in [t.lower() for t in entry.tags]
+                                for tag in tags
+                            ):
+                                continue
+
+                            # Check date filters
+                            if date_from and entry.created_at < date_from:
+                                continue
+
+                            if date_to and entry.created_at > date_to:
+                                continue
+
+                            # Check folder filter
+                            if folder is not None and entry.folder != folder:
+                                continue
+
+                            # Check favorite filter
+                            if favorite is not None and entry.favorite != favorite:
+                                continue
+
+                            filtered_entries.append(entry)
 
                         # Apply pagination
                         return filtered_entries[offset : offset + limit]  # noqa: E203
@@ -309,13 +350,15 @@ class StorageManager:
 
         # Regular search path (also fallback if semantic search fails)
         if not query.strip():
-            # Get all entries matching date and tag filters
+            # Get all entries matching date, tag, folder, and favorite filters
             all_entries = self.get_entries(
                 limit=1000,  # Get more to filter properly
                 offset=0,
                 date_from=date_from,
                 date_to=date_to,
                 tags=tags,
+                folder=folder,
+                favorite=favorite,
             )
 
             # Apply pagination
@@ -327,9 +370,81 @@ class StorageManager:
             date_from=date_from,
             date_to=date_to,
             tags=tags,
+            folder=folder,
+            favorite=favorite,
             limit=1000,  # Get more entries
             offset=0,
         )
 
         # Apply pagination
         return entries[offset : offset + limit]  # noqa: E203
+
+    # Journal organization methods
+
+    def get_favorite_entries(
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[JournalEntry]:
+        """Get favorite entries with optional filtering."""
+        return self.entries.get_favorite_entries(
+            limit, offset, date_from, date_to, tags
+        )
+
+    def batch_update_folder(
+        self,
+        entry_ids: List[str],
+        folder: Optional[str],
+    ) -> int:
+        """Update the folder for multiple entries at once."""
+        return self.entries.batch_update_folder(entry_ids, folder)
+
+    def batch_toggle_favorite(
+        self,
+        entry_ids: List[str],
+        favorite: bool,
+    ) -> int:
+        """Set favorite status for multiple entries at once."""
+        return self.entries.batch_toggle_favorite(entry_ids, favorite)
+
+    def get_folders(self) -> List[str]:
+        """Get all unique folder names used in the journal."""
+        return self.entries.get_folders()
+
+    def get_entries_by_folder(
+        self,
+        folder: str,
+        limit: int = 10,
+        offset: int = 0,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+    ) -> List[JournalEntry]:
+        """Get entries in a specific folder, with optional date filtering.
+
+        Args:
+            folder: The folder path to filter by
+            limit: Maximum number of entries to retrieve
+            offset: Number of entries to skip for pagination
+            date_from: Optional start date for filtering
+            date_to: Optional end date for filtering
+
+        Returns:
+            List of JournalEntry objects in the specified folder
+        """
+        return self.entries.get_entries_by_folder(
+            folder, limit, offset, date_from, date_to
+        )
+
+    def create_folder(self, folder_name: str) -> bool:
+        """Create a new folder in the journal system.
+
+        Args:
+            folder_name: Name of the folder to create
+
+        Returns:
+            True if the folder was created successfully, False otherwise
+        """
+        return self.entries.create_folder(folder_name)

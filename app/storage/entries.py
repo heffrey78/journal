@@ -26,18 +26,112 @@ class EntryStorage(BaseStorage):
         """Initialize the entries table."""
         conn = self.get_db_connection()
         cursor = conn.cursor()
+
+        # Check if we need to perform a migration
+        cursor.execute("PRAGMA table_info(entries)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+        if (
+            "folder" not in columns
+            or "favorite" not in columns
+            or "images" not in columns
+        ):
+            # Migration needed - create new schema
+            cursor.execute("BEGIN TRANSACTION")
+            try:
+                # Rename old table
+                cursor.execute("ALTER TABLE entries RENAME TO entries_old")
+
+                # Create new table with updated schema
+                cursor.execute(
+                    """
+                    CREATE TABLE entries (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT,
+                        tags TEXT,
+                        folder TEXT,
+                        favorite INTEGER DEFAULT 0,
+                        images TEXT
+                    )
+                    """
+                )
+
+                # Copy data from old table to new, with defaults for new columns
+                cursor.execute(
+                    """
+                    INSERT INTO entries "
+                    "(id, title, file_path, created_at, "
+                    "updated_at, tags, folder, favorite, images)
+                    SELECT id, title, file_path, created_at, "
+                    "updated_at, tags, NULL, 0, '[]'
+                    FROM entries_old
+                    """
+                )
+
+                # Drop old table
+                cursor.execute("DROP TABLE entries_old")
+                cursor.execute("COMMIT")
+                print(
+                    "Database migration complete: Added folder, favorite, "
+                    "and images fields"
+                )
+            except Exception as e:
+                cursor.execute("ROLLBACK")
+                print(f"Database migration failed: {str(e)}")
+                # Fall back to creating the original schema if migration fails
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS entries (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT,
+                        tags TEXT
+                    )
+                    """
+                )
+        else:
+            # Table exists with all needed columns
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS entries (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT,
+                    tags TEXT,
+                    folder TEXT,
+                    favorite INTEGER DEFAULT 0,
+                    images TEXT
+                )
+                """
+            )
+
+        # Create index for folder to improve performance when filtering by folder
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entries_folder ON entries(folder)"
+        )
+
+        # Create index for favorite to improve performance when filtering favorites
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entries_favorite ON entries(favorite)"
+        )
+
+        # Create folders table for empty folders
         cursor.execute(
             """
-            CREATE TABLE IF NOT EXISTS entries (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT,
-                tags TEXT
+            CREATE TABLE IF NOT EXISTS folders (
+                name TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
             )
-            """
+        """
         )
+
         conn.commit()
         conn.close()
 
@@ -65,7 +159,7 @@ class EntryStorage(BaseStorage):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     entry.id,
                     entry.title,
@@ -73,6 +167,9 @@ class EntryStorage(BaseStorage):
                     entry.created_at.isoformat(),
                     entry.updated_at.isoformat() if entry.updated_at else None,
                     json.dumps(entry.tags),
+                    entry.folder,
+                    1 if entry.favorite else 0,
+                    json.dumps(entry.images),
                 ),
             )
             conn.commit()
@@ -101,7 +198,8 @@ class EntryStorage(BaseStorage):
         conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
-            query = """SELECT id, title, file_path, created_at, updated_at, tags
+            query = """SELECT id, title, file_path, created_at, updated_at, tags, "
+            "folder, favorite, images
                     FROM entries WHERE id = ?"""
             cursor.execute(query, (entry_id,))
             row = cursor.fetchone()
@@ -110,7 +208,17 @@ class EntryStorage(BaseStorage):
                 return None
 
             # Extract metadata
-            id, title, file_path, created_at, updated_at, tags_json = row
+            (
+                id,
+                title,
+                file_path,
+                created_at,
+                updated_at,
+                tags_json,
+                folder,
+                favorite,
+                images_json,
+            ) = row
 
             # Read content from file
             if not os.path.exists(file_path):
@@ -132,6 +240,9 @@ class EntryStorage(BaseStorage):
                 created_at=datetime.fromisoformat(created_at),
                 updated_at=(datetime.fromisoformat(updated_at) if updated_at else None),
                 tags=json.loads(tags_json) if tags_json else [],
+                folder=folder,
+                favorite=bool(favorite),
+                images=json.loads(images_json) if images_json else [],
             )
 
             # Add to cache
@@ -171,6 +282,15 @@ class EntryStorage(BaseStorage):
         if "tags" in update_data:
             entry.tags = update_data["tags"]
 
+        if "folder" in update_data:
+            entry.folder = update_data["folder"]
+
+        if "favorite" in update_data:
+            entry.favorite = update_data["favorite"]
+
+        if "images" in update_data:
+            entry.images = update_data["images"]
+
         # Always update the updated_at timestamp
         entry.updated_at = datetime.now()
 
@@ -185,10 +305,13 @@ class EntryStorage(BaseStorage):
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         tags: Optional[List[str]] = None,
+        folder: Optional[str] = None,
+        favorite: Optional[bool] = None,
     ) -> List[JournalEntry]:
         """
         Retrieve a list of journal entries, ordered by creation date
-        (newest first). Optionally filter by date range and tags.
+        (newest first). Optionally filter by date range, tags, folder,
+        and favorite status.
 
         Args:
             limit: Maximum number of entries to retrieve
@@ -196,6 +319,8 @@ class EntryStorage(BaseStorage):
             date_from: Optional start date for filtering
             date_to: Optional end date for filtering
             tags: Optional list of tags for filtering
+            folder: Optional folder path for filtering
+            favorite: Optional favorite status for filtering
 
         Returns:
             List of JournalEntry objects
@@ -224,6 +349,16 @@ class EntryStorage(BaseStorage):
                     tag_conditions.append("tags LIKE ?")
                     params.append(f"%{json.dumps(tag)[1:-1]}%")
                 where_clauses.append(f"({' OR '.join(tag_conditions)})")
+
+            # Add folder filter if provided
+            if folder is not None:
+                where_clauses.append("folder = ?")
+                params.append(folder)
+
+            # Add favorite filter if provided
+            if favorite is not None:
+                where_clauses.append("favorite = ?")
+                params.append(1 if favorite else 0)
 
             # Build the final query
             if where_clauses:
@@ -314,18 +449,22 @@ class EntryStorage(BaseStorage):
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         tags: Optional[List[str]] = None,
+        folder: Optional[str] = None,
+        favorite: Optional[bool] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List[JournalEntry]:
         """
         Perform a simple text search across journal entries.
-        Can be filtered by date range and tags.
+        Can be filtered by date range, tags, folder, and favorite status.
 
         Args:
             query: The search query
             date_from: Optional start date for filtering
             date_to: Optional end date for filtering
             tags: Optional list of tags for filtering
+            folder: Optional folder path for filtering
+            favorite: Optional favorite status for filtering
             limit: Maximum number of entries to return (default: 100)
             offset: Number of entries to skip for pagination (default: 0)
 
@@ -340,6 +479,8 @@ class EntryStorage(BaseStorage):
                 date_from=date_from,
                 date_to=date_to,
                 tags=tags,
+                folder=folder,
+                favorite=favorite,
             )
 
         entries = []
@@ -369,6 +510,16 @@ class EntryStorage(BaseStorage):
                     params.append(f"%{json.dumps(tag)[1:-1]}%")
                 if tag_conditions:
                     where_clauses.append(f"({' OR '.join(tag_conditions)})")
+
+            # Add folder filter if provided
+            if folder is not None:
+                where_clauses.append("folder = ?")
+                params.append(folder)
+
+            # Add favorite filter if provided
+            if favorite is not None:
+                where_clauses.append("favorite = ?")
+                params.append(1 if favorite else 0)
 
             # Build query to get all entries meeting filter criteria
             query_sql = "SELECT id, file_path, title, tags FROM entries"
@@ -458,3 +609,327 @@ class EntryStorage(BaseStorage):
             filtered = [e for e in filtered if e.created_at <= date_to]
 
         return filtered
+
+    def get_folders(self) -> List[str]:
+        """
+        Get a list of all unique folders used in the journal.
+        This includes both folders that contain entries and empty folders.
+
+        Returns:
+            List of folder names/paths
+        """
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        folders = set()
+
+        try:
+            # Get folders from entries table
+            cursor.execute(
+                "SELECT DISTINCT folder FROM entries WHERE folder IS NOT NULL"
+            )
+            for row in cursor.fetchall():
+                folders.add(row[0])
+
+            # Get folders from dedicated folders table (if it exists)
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='folders'"
+            )
+            if cursor.fetchone():
+                cursor.execute("SELECT name FROM folders")
+                for row in cursor.fetchall():
+                    folders.add(row[0])
+
+            return list(folders)
+        finally:
+            conn.close()
+
+    def get_entries_by_folder(
+        self,
+        folder: str,
+        limit: int = 10,
+        offset: int = 0,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+    ) -> List[JournalEntry]:
+        """
+        Get entries in a specific folder, with optional date filtering.
+
+        Args:
+            folder: The folder path to filter by
+            limit: Maximum number of entries to retrieve
+            offset: Number of entries to skip for pagination
+            date_from: Optional start date for filtering
+            date_to: Optional end date for filtering
+
+        Returns:
+            List of JournalEntry objects in the specified folder
+        """
+        # URL decoding if needed
+        import urllib.parse
+
+        try:
+            if "%" in folder:
+                folder = urllib.parse.unquote(folder)
+        except Exception:
+            # If URL decoding fails, just use the original folder name
+            pass
+
+        # Return empty list for empty string or None
+        if not folder:
+            return []
+
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            # Check if folder exists in entries table
+            cursor.execute("SELECT COUNT(*) FROM entries WHERE folder = ?", (folder,))
+            has_entries = cursor.fetchone()[0] > 0
+
+            # If no entries with this folder, check if it's an empty folder
+            if not has_entries:
+                cursor.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name='folders'"
+                )
+                if cursor.fetchone():  # Table exists
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM folders WHERE name = ?", (folder,)
+                    )
+                    folder_exists = cursor.fetchone()[0] > 0
+                    if not folder_exists:
+                        # Folder doesn't exist at all
+                        return []
+                    else:
+                        # Folder exists but is empty - explicitly return empty list
+                        return []
+        finally:
+            conn.close()
+
+        # Folder exists with entries, proceed with normal query
+        return self.get_entries(
+            limit=limit,
+            offset=offset,
+            date_from=date_from,
+            date_to=date_to,
+            folder=folder,
+        )
+
+    def get_entries_by_date(
+        self,
+        date: datetime,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[JournalEntry]:
+        """
+        Get entries created on a specific date for calendar view.
+
+        Args:
+            date: The date to filter by (only year, month, day are used)
+            limit: Maximum number of entries to retrieve
+            offset: Number of entries to skip for pagination
+
+        Returns:
+            List of JournalEntry objects created on the specified date
+        """
+        # Extract just the date part and create start/end datetime objects
+        start_date = datetime(date.year, date.month, date.day, 0, 0, 0)
+        end_date = datetime(date.year, date.month, date.day, 23, 59, 59)
+
+        return self.get_entries(
+            limit=limit,
+            offset=offset,
+            date_from=start_date,
+            date_to=end_date,
+        )
+
+    def get_favorite_entries(
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[JournalEntry]:
+        """
+        Get favorite entries with optional filtering.
+
+        Args:
+            limit: Maximum number of entries to retrieve
+            offset: Number of entries to skip for pagination
+            date_from: Optional start date for filtering
+            date_to: Optional end date for filtering
+            tags: Optional tags to filter by
+
+        Returns:
+            List of favorite JournalEntry objects
+        """
+        return self.get_entries(
+            limit=limit,
+            offset=offset,
+            date_from=date_from,
+            date_to=date_to,
+            tags=tags,
+            favorite=True,
+        )
+
+    def batch_update_folder(
+        self,
+        entry_ids: List[str],
+        folder: Optional[str],
+    ) -> int:
+        """
+        Update the folder for multiple entries at once.
+
+        Args:
+            entry_ids: List of entry IDs to update
+            folder: New folder value (None to remove from folders)
+
+        Returns:
+            Number of entries successfully updated
+        """
+        if not entry_ids:
+            return 0
+
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            # Use placeholders for each ID in the WHERE clause
+            placeholders = ", ".join(["?" for _ in entry_ids])
+
+            # Update the folder for all specified entries
+            cursor.execute(
+                "UPDATE entries SET folder = ?, updated_at = ? "
+                f"WHERE id IN ({placeholders})",
+                [folder, datetime.now().isoformat()] + entry_ids,
+            )
+
+            conn.commit()
+
+            # Return count of updated rows
+            updated_count = cursor.rowcount
+
+            # Clear cache for updated entries
+            for entry_id in entry_ids:
+                if entry_id in self._entry_cache:
+                    del self._entry_cache[entry_id]
+
+            return updated_count
+        finally:
+            conn.close()
+
+    def batch_toggle_favorite(
+        self,
+        entry_ids: List[str],
+        favorite: bool,
+    ) -> int:
+        """
+        Set favorite status for multiple entries at once.
+
+        Args:
+            entry_ids: List of entry IDs to update
+            favorite: New favorite status
+
+        Returns:
+            Number of entries successfully updated
+        """
+        if not entry_ids:
+            return 0
+
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            # Use placeholders for each ID in the WHERE clause
+            placeholders = ", ".join(["?" for _ in entry_ids])
+
+            # Update the favorite status for all specified entries
+            cursor.execute(
+                "UPDATE entries SET favorite = ?, updated_at = ? "
+                f"WHERE id IN ({placeholders})",
+                [1 if favorite else 0, datetime.now().isoformat()] + entry_ids,
+            )
+
+            conn.commit()
+
+            # Return count of updated rows
+            updated_count = cursor.rowcount
+
+            # Clear cache for updated entries
+            for entry_id in entry_ids:
+                if entry_id in self._entry_cache:
+                    del self._entry_cache[entry_id]
+
+            return updated_count
+        finally:
+            conn.close()
+
+    def create_folder(self, folder_name: str) -> bool:
+        """
+        Create a new folder in the journal system.
+
+        Since folders are implemented as metadata and not actual directories,
+        this function adds an entry in a special table to track empty folders.
+
+        Args:
+            folder_name: Name of the folder to create
+
+        Returns:
+            True if the folder was created successfully, False otherwise
+        """
+        if not folder_name or folder_name.strip() == "":
+            return False
+
+        folder_name = folder_name.strip()
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # First check if the folder already exists in entries
+            cursor.execute(
+                "SELECT COUNT(*) FROM entries WHERE folder = ?", (folder_name,)
+            )
+            if cursor.fetchone()[0] > 0:
+                # Folder already exists with entries
+                return True
+
+            # Check if the folders table exists
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='folders'"
+            )
+            if not cursor.fetchone():
+                # Create the folders table if it doesn't exist
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS folders (
+                        name TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL
+                    )
+                """
+                )
+                conn.commit()
+
+            # Check if the folder already exists in the folders table
+            cursor.execute(
+                "SELECT COUNT(*) FROM folders WHERE name = ?", (folder_name,)
+            )
+            if cursor.fetchone()[0] > 0:
+                # Folder already exists in the folders table
+                return True
+
+            # Add the folder since it doesn't exist yet
+            cursor.execute(
+                "INSERT INTO folders (name, created_at) VALUES (?, ?)",
+                (folder_name, datetime.now().isoformat()),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            # Log the error properly
+            import traceback
+
+            print(f"Error creating folder: {str(e)}")
+            print(traceback.format_exc())
+            # Rollback any changes
+            conn.rollback()
+            return False
+        finally:
+            conn.close()

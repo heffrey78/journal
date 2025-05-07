@@ -7,6 +7,7 @@ export interface JournalEntry {
   updated_at: string;
   tags: string[];
   favorite: boolean;
+  folder?: string;
   images?: string[];
 }
 
@@ -15,6 +16,7 @@ export interface CreateJournalEntryInput {
   content: string;
   tags?: string[];
   images?: string[];
+  folder?: string;
 }
 
 export interface UpdateJournalEntryInput {

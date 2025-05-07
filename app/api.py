@@ -20,10 +20,15 @@ from pydantic import BaseModel, Field
 from app.models import JournalEntry, LLMConfig
 from app.storage import StorageManager
 from app.llm_service import LLMService, EntrySummary
+from app.organization_routes import organization_router
+from app.utils import get_storage, get_llm_service  # Import from utils module
 
 app = FastAPI(
     title="Journal API", description="API for managing journal entries", version="0.1.0"
 )
+
+# Include the organization router
+app.include_router(organization_router)
 
 # Add CORS middleware
 app.add_middleware(
@@ -42,30 +47,15 @@ storage_manager = None
 llm_service = None
 
 
-def get_storage() -> StorageManager:
-    """Dependency to get the storage manager instance"""
-    global storage_manager
-    if storage_manager is None:
-        storage_manager = StorageManager()
-    return storage_manager
-
-
-def get_llm_service() -> LLMService:
-    """Dependency to get the LLM service instance"""
-    global llm_service, storage_manager
-    if llm_service is None:
-        if storage_manager is None:
-            storage_manager = StorageManager()
-        llm_service = LLMService(storage_manager=storage_manager)
-    return llm_service
-
-
 class EntryUpdate(BaseModel):
     """Model for updating journal entries"""
 
     title: Optional[str] = None
     content: Optional[str] = None
     tags: Optional[List[str]] = None
+    folder: Optional[str] = None
+    favorite: Optional[bool] = None
+    images: Optional[List[str]] = None
 
 
 class SearchParams(BaseModel):
@@ -75,6 +65,8 @@ class SearchParams(BaseModel):
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     tags: Optional[List[str]] = None
+    folder: Optional[str] = None
+    favorite: Optional[bool] = None
     semantic: bool = False  # Toggle for semantic search
     limit: int = Field(default=10, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
@@ -145,6 +137,12 @@ class SemanticSearchResult(BaseModel):
     entry: JournalEntry
     similarity: float
     text: Optional[str] = None  # The text chunk that matched
+
+
+class BatchUpdateRequest(BaseModel):
+    """Model for batch update requests"""
+
+    entry_ids: List[str]
 
 
 # Setup exception handlers
@@ -250,6 +248,35 @@ async def list_entries(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve entries: {str(e)}"
+        )
+
+
+@app.get("/entries/favorites", response_model=List[JournalEntry], tags=["organization"])
+async def get_favorite_entries(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    tag: Optional[str] = None,
+    storage: StorageManager = Depends(get_storage),
+):
+    """Get favorite entries with optional filtering"""
+    try:
+        # Convert date to datetime if provided
+        from_dt = (
+            datetime.combine(date_from, datetime.min.time()) if date_from else None
+        )
+        to_dt = datetime.combine(date_to, datetime.max.time()) if date_to else None
+
+        tags_filter = [tag] if tag else None
+
+        entries = storage.get_favorite_entries(
+            limit, offset, from_dt, to_dt, tags_filter
+        )
+        return entries
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get favorite entries: {str(e)}"
         )
 
 
@@ -1133,3 +1160,172 @@ async def list_images(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list images: {str(e)}")
+
+
+@app.get("/folders/", response_model=List[str], tags=["organization"])
+async def get_folders(storage: StorageManager = Depends(get_storage)):
+    """Get all folders used in the journal"""
+    try:
+        return storage.get_folders()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get folders: {str(e)}")
+
+
+@app.get(
+    "/folders/{folder}/entries",
+    response_model=List[JournalEntry],
+    tags=["organization"],
+)
+async def get_entries_by_folder(
+    folder: str,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    storage: StorageManager = Depends(get_storage),
+):
+    """Get entries in a specific folder"""
+    import logging
+    import traceback
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Log that we're accessing this endpoint
+        logger.info(f"Accessing entries for folder: {folder}")
+
+        # Convert date to datetime if provided
+        from_dt = (
+            datetime.combine(date_from, datetime.min.time()) if date_from else None
+        )
+        to_dt = datetime.combine(date_to, datetime.max.time()) if date_to else None
+
+        # Get entries from the folder (or empty list if folder is empty)
+        entries = storage.get_entries_by_folder(folder, limit, offset, from_dt, to_dt)
+
+        # Log success
+        logger.info(
+            f"Successfully retrieved {len(entries)} entries from folder '{folder}'"
+        )
+
+        # Always return a list (might be empty)
+        return entries
+    except Exception as e:
+        # Log detailed error
+        logger.error(f"Error getting entries for folder '{folder}': {str(e)}")
+        logger.error(traceback.format_exc())
+
+        # Re-raise with more details
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get entries by folder: "
+            f"{str(e)}\n{traceback.format_exc()}",
+        )
+
+
+@app.put(
+    "/entries/{entry_id}/favorite", response_model=JournalEntry, tags=["organization"]
+)
+async def toggle_entry_favorite(
+    entry_id: str,
+    favorite: bool = True,
+    storage: StorageManager = Depends(get_storage),
+):
+    """Toggle favorite status for an entry"""
+    try:
+        # Update the entry with the new favorite status
+        updated_entry = storage.update_entry(entry_id, {"favorite": favorite})
+        if not updated_entry:
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+        return updated_entry
+    except Exception as e:
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update favorite status: {str(e)}"
+        )
+
+
+@app.get("/calendar/{date}", response_model=List[JournalEntry], tags=["organization"])
+async def get_entries_by_date(
+    date: date,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    storage: StorageManager = Depends(get_storage),
+):
+    """Get entries created on a specific date (for calendar view)"""
+    try:
+        # Convert date to datetime for storage API
+        dt = datetime.combine(date, datetime.min.time())
+        entries = storage.get_entries_by_date(dt, limit, offset)
+        return entries
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get entries by date: {str(e)}"
+        )
+
+
+@app.post("/batch/update-folder", tags=["organization"])
+async def batch_update_folder(
+    request: BatchUpdateRequest,
+    folder: Optional[str] = Query(
+        None, description="New folder value (None to remove from folders)"
+    ),
+    storage: StorageManager = Depends(get_storage),
+):
+    """Update folder for multiple entries at once"""
+    try:
+        updated_count = storage.batch_update_folder(request.entry_ids, folder)
+        return {
+            "status": "success",
+            "message": f"Updated folder for {updated_count} entries",
+            "updated_count": updated_count,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to batch update folders: {str(e)}"
+        )
+
+
+@app.post("/batch/favorite", tags=["organization"])
+async def batch_update_favorite(
+    request: BatchUpdateRequest,
+    favorite: bool = Query(True, description="New favorite status"),
+    storage: StorageManager = Depends(get_storage),
+):
+    """Set favorite status for multiple entries at once"""
+    try:
+        updated_count = storage.batch_toggle_favorite(request.entry_ids, favorite)
+        return {
+            "status": "success",
+            "message": f"Updated favorite status for {updated_count} entries",
+            "updated_count": updated_count,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to batch update favorite status: {str(e)}"
+        )
+
+
+@app.post("/folders/", tags=["organization"])
+async def create_folder(
+    folder_name: str = Query(..., description="Name of the folder to create"),
+    storage: StorageManager = Depends(get_storage),
+):
+    """Create a new folder in the journal"""
+    try:
+        success = storage.create_folder(folder_name)
+        if not success:
+            raise HTTPException(
+                status_code=400, detail="Invalid folder name or folder already exists"
+            )
+        return {
+            "status": "success",
+            "message": f"Folder '{folder_name}' created successfully",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create folder: {str(e)}"
+        )

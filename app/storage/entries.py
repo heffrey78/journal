@@ -62,11 +62,11 @@ class EntryStorage(BaseStorage):
                 # Copy data from old table to new, with defaults for new columns
                 cursor.execute(
                     """
-                    INSERT INTO entries "
-                    "(id, title, file_path, created_at, "
-                    "updated_at, tags, folder, favorite, images)
-                    SELECT id, title, file_path, created_at, "
-                    "updated_at, tags, NULL, 0, '[]'
+                    INSERT INTO entries 
+                    (id, title, file_path, created_at, 
+                    updated_at, tags, folder, favorite, images)
+                    SELECT id, title, file_path, created_at, 
+                    updated_at, tags, NULL, 0, '[]'
                     FROM entries_old
                     """
                 )

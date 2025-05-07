@@ -8,13 +8,14 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from app.models import JournalEntry
+from app.models import JournalEntry, BatchAnalysis
 from app.storage.entries import EntryStorage
 from app.storage.vector_search import VectorStorage
 from app.storage.config import ConfigStorage
 from app.storage.summaries import SummaryStorage
 from app.storage.images import ImageStorage
 from app.storage.tags import TagStorage
+from app.storage.batch_analyses import BatchAnalysisStorage
 
 
 class StorageManager:
@@ -40,6 +41,7 @@ class StorageManager:
         self.summaries = SummaryStorage(base_dir)
         self.images = ImageStorage(base_dir)
         self.tags = TagStorage(base_dir)
+        self.batch_analyses = BatchAnalysisStorage(base_dir)  # New batch analysis component
 
     # Entry management methods
 
@@ -448,3 +450,68 @@ class StorageManager:
             True if the folder was created successfully, False otherwise
         """
         return self.entries.create_folder(folder_name)
+
+    # Batch Analysis methods
+    
+    def save_batch_analysis(self, analysis: BatchAnalysis) -> bool:
+        """
+        Save a batch analysis to the database.
+        
+        Args:
+            analysis: BatchAnalysis object to save
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.batch_analyses.save_batch_analysis(analysis)
+        
+    def get_batch_analysis(self, batch_id: str) -> Optional[BatchAnalysis]:
+        """
+        Get a batch analysis by ID.
+        
+        Args:
+            batch_id: ID of the batch analysis to retrieve
+            
+        Returns:
+            BatchAnalysis object if found, None otherwise
+        """
+        return self.batch_analyses.get_batch_analysis(batch_id)
+        
+    def get_batch_analyses(
+        self, limit: int = 10, offset: int = 0
+    ) -> List[BatchAnalysis]:
+        """
+        Get a list of batch analyses with pagination.
+        
+        Args:
+            limit: Maximum number of analyses to retrieve
+            offset: Number of analyses to skip for pagination
+            
+        Returns:
+            List of BatchAnalysis objects
+        """
+        return self.batch_analyses.get_batch_analyses(limit, offset)
+        
+    def delete_batch_analysis(self, batch_id: str) -> bool:
+        """
+        Delete a batch analysis by ID.
+        
+        Args:
+            batch_id: ID of the batch analysis to delete
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.batch_analyses.delete_batch_analysis(batch_id)
+        
+    def get_entry_batch_analyses(self, entry_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all batch analyses that include a specific entry.
+        
+        Args:
+            entry_id: ID of the journal entry
+            
+        Returns:
+            List of dictionaries with basic batch analysis info
+        """
+        return self.batch_analyses.get_entry_batch_analyses(entry_id)

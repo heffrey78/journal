@@ -96,6 +96,56 @@ def migrate_database(db_path="./journal_data/journal.db"):
                     (pt.id, config_id, pt.name, pt.prompt),
                 )
 
+        # Check if batch_analyses table exists
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='batch_analyses'"
+        )
+        if not cursor.fetchone():
+            logger.info("Creating batch_analyses table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS batch_analyses (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    date_range TEXT,
+                    summary TEXT NOT NULL,
+                    key_themes TEXT NOT NULL,
+                    mood_trends TEXT NOT NULL,
+                    notable_insights TEXT NOT NULL,
+                    prompt_type TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            
+            # Create index for batch_analyses
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_batch_analyses_created_at ON batch_analyses(created_at)"
+            )
+        
+        # Check if batch_analysis_entries table exists
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='batch_analysis_entries'"
+        )
+        if not cursor.fetchone():
+            logger.info("Creating batch_analysis_entries relation table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS batch_analysis_entries (
+                    batch_id TEXT,
+                    entry_id TEXT,
+                    PRIMARY KEY (batch_id, entry_id),
+                    FOREIGN KEY (batch_id) REFERENCES batch_analyses(id) ON DELETE CASCADE,
+                    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+                )
+                """
+            )
+            
+            # Create index for batch_analysis_entries
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_batch_analysis_entries_entry_id ON batch_analysis_entries(entry_id)"
+            )
+
         conn.commit()
         logger.info("Database migration completed successfully")
         return True

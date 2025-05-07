@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 class JournalEntry(BaseModel):
@@ -161,5 +161,65 @@ class LLMConfig(BaseModel):
                         "Extract key topics and mood. Return as JSON:",
                     }
                 ],
+            }
+        }
+
+
+class BatchAnalysisRequest(BaseModel):
+    """
+    Request model for batch analysis of multiple journal entries.
+    
+    Attributes:
+        entry_ids: List of entry IDs to analyze
+        title: Optional title for the batch analysis
+        prompt_type: Type of analysis to perform (weekly, monthly, topic, etc.)
+    """
+    entry_ids: List[str]
+    title: Optional[str] = None
+    prompt_type: str = "weekly"
+
+
+class BatchAnalysis(BaseModel):
+    """
+    Model for batch analysis of multiple journal entries.
+    
+    Attributes:
+        id: Unique identifier for the batch analysis
+        title: Title for the batch analysis
+        entry_ids: List of entry IDs included in the analysis
+        date_range: Optional string representing the date range of included entries
+        created_at: Timestamp when the analysis was created
+        summary: Main summary text of the batch analysis
+        key_themes: List of key themes identified across entries
+        mood_trends: Dictionary mapping mood categories to their frequency
+        notable_insights: List of notable insights extracted from entries
+        prompt_type: Type of analysis that was performed
+    """
+    id: str = Field(default_factory=lambda: f"ba-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    title: str
+    entry_ids: List[str]
+    date_range: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    summary: str
+    key_themes: List[str]
+    mood_trends: Dict[str, int]
+    notable_insights: List[str]
+    prompt_type: Optional[str] = None
+    
+    class Config:
+        """Pydantic config options"""
+        json_schema_extra = {
+            "example": {
+                "title": "Weekly Analysis: May 1-7, 2025",
+                "entry_ids": ["20250501121957", "20250503110841", "20250507121957"],
+                "date_range": "2025-05-01 to 2025-05-07",
+                "summary": "This week focused on the journal app development with significant progress on batch operations.",
+                "key_themes": ["coding", "productivity", "planning"],
+                "mood_trends": {"focused": 2, "creative": 1, "determined": 3},
+                "notable_insights": [
+                    "Breaking work into small commits improves progress tracking",
+                    "Regular journaling helps organize thoughts about technical challenges"
+                ],
+                "prompt_type": "weekly"
             }
         }

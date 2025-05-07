@@ -6,6 +6,7 @@ import { JournalEntry } from '@/lib/types';  // Import from types.ts instead of 
 import { organizationApi } from '@/lib/api';
 import MoveEntriesDialog from '@/components/dialogs/MoveEntriesDialog';
 import { FolderIcon, ArrowsRightLeftIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 
 interface EntryListProps {
   entries: JournalEntry[];
@@ -241,8 +242,11 @@ const EntryList: React.FC<EntryListProps> = ({
                   {formatDate(entry.created_at)}
                 </div>
                 {showExcerpt && (
-                  <div className="mt-2 text-gray-600 dark:text-gray-300">
-                    {getExcerpt(entry.content)}
+                  <div className="mt-2 text-gray-600 dark:text-gray-300 excerpt-container">
+                    <MarkdownRenderer 
+                      content={getExcerpt(entry.content)}
+                      className="excerpt-markdown" 
+                    />
                   </div>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">

@@ -776,14 +776,14 @@ async def update_llm_config(
                     # Wait for results with timeout
                     try:
                         # Give each model 5 seconds to respond
-                        chat_future.result(timeout=5)
+                        chat_future.result(timeout=10)
                         logger.info(f"Chat model {config.model_name} validated")
                     except Exception as chat_error:
                         logger.error(f"Chat model validation error: {chat_error}")
                         # Continue anyway, don't block the config update
 
                     try:
-                        embed_future.result(timeout=5)
+                        embed_future.result(timeout=10)
                         logger.info(
                             f"Embedding model {config.embedding_model} validated"
                         )

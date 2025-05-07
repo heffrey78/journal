@@ -126,3 +126,52 @@ body {
 .text-size-2xl {
   font-size: var(--font-size-2xl);
 }
+
+/* Add custom styles for markdown excerpts in entry list */
+.excerpt-container {
+  overflow: hidden;
+}
+
+.excerpt-markdown.prose {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.excerpt-markdown.prose h1,
+.excerpt-markdown.prose h2,
+.excerpt-markdown.prose h3 {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  font-size: 1.1rem;
+}
+
+.excerpt-markdown.prose p {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.excerpt-markdown.prose ul,
+.excerpt-markdown.prose ol {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+  padding-left: 1rem;
+}
+
+.excerpt-markdown.prose img {
+  max-height: 80px;
+  display: inline-block;
+  margin: 0.25em 0;
+}
+
+.excerpt-markdown.prose pre,
+.excerpt-markdown.prose code {
+  font-size: 0.85rem;
+  padding: 0.1em 0.2em;
+}
+
+/* Limit the height of excerpts in list view */
+.excerpt-container .excerpt-markdown.prose {
+  max-height: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

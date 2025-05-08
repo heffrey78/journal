@@ -4,12 +4,12 @@ LLM Service for the journal application.
 This module provides integration with Ollama for
 embedding generation and structured outputs.
 """
+
 import ollama
 import numpy as np
 import logging
 import time
 import json
-from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 from pydantic import BaseModel
 from app.storage import StorageManager
@@ -48,6 +48,7 @@ class SummarizationError(LLMServiceError):
 
 class BatchAnalysisError(LLMServiceError):
     """Exception raised when batch analysis fails."""
+
     pass
 
 
@@ -368,28 +369,28 @@ class LLMService:
     ) -> BatchAnalysis:
         """
         Generate an analysis for a batch of journal entries.
-        
+
         This method processes multiple entries together to identify patterns,
         common themes, and insights across the entries.
-        
+
         Args:
             entries: List of journal entries to analyze
-            title: Title for the batch analysis 
+            title: Title for the batch analysis
                    (if not provided, one will be generated)
-            prompt_type: Type of batch analysis to perform 
+            prompt_type: Type of batch analysis to perform
                         (weekly, monthly, topic, etc.)
             progress_callback: Optional function to report progress (0.0-1.0)
-            
+
         Returns:
             BatchAnalysis object with the analysis results
-            
+
         Raises:
             BatchAnalysisError: If batch analysis fails
             ValueError: If entries list is empty
         """
         if not entries:
             raise ValueError("Cannot analyze an empty list of entries")
-            
+
         try:
             # Report initial progress
             if progress_callback:
@@ -400,98 +401,117 @@ class LLMService:
                 # Get date range
                 dates = sorted([entry.created_at for entry in entries])
                 if len(dates) > 1:
-                    date_range = f"{dates[0].strftime('%Y-%m-%d')} to {dates[-1].strftime('%Y-%m-%d')}"
+                    date_range = f"{dates[0].strftime('%Y-%m-%d')} to "
+                    f"{dates[-1].strftime('%Y-%m-%d')}"
                     title = f"{prompt_type.capitalize()} Analysis: {date_range}"
                 else:
-                    date_range = dates[0].strftime('%Y-%m-%d')
+                    date_range = dates[0].strftime("%Y-%m-%d")
                     title = f"Analysis for {date_range}"
             else:
                 # Extract date range from entries
                 dates = sorted([entry.created_at for entry in entries])
                 if len(dates) > 1:
-                    date_range = f"{dates[0].strftime('%Y-%m-%d')} to {dates[-1].strftime('%Y-%m-%d')}"
+                    date_range = f"{dates[0].strftime('%Y-%m-%d')} to "
+                    f"{dates[-1].strftime('%Y-%m-%d')}"
                 else:
-                    date_range = dates[0].strftime('%Y-%m-%d')
-            
+                    date_range = dates[0].strftime("%Y-%m-%d")
+
             # Collect entry IDs for the batch analysis
             entry_ids = [entry.id for entry in entries]
-            
+
             # Check if we have too many entries for a single batch
             # If so, we'll need to implement a chunking strategy
             if len(entries) > 10:
-                logger.info(f"Large batch of {len(entries)} entries - using chunking strategy")
-                return self._analyze_large_batch(entries, title, prompt_type, date_range, entry_ids, progress_callback)
-            
+                logger.info(
+                    f"Large batch of {len(entries)} entries - using chunking strategy"
+                )
+                return self._analyze_large_batch(
+                    entries,
+                    title,
+                    prompt_type,
+                    date_range,
+                    entry_ids,
+                    progress_callback,
+                )
+
             # Report progress after preprocessing
             if progress_callback:
                 progress_callback(0.2)
-            
+
             # Prepare the entries for analysis
             combined_content = ""
             for i, entry in enumerate(entries):
-                combined_content += f"Entry {i+1} - {entry.created_at.strftime('%Y-%m-%d')}:\n"
+                combined_content += (
+                    f"Entry {i + 1} - {entry.created_at.strftime('%Y-%m-%d')}:\n"
+                )
                 combined_content += f"Title: {entry.title}\n"
                 combined_content += f"Content: {entry.content}\n\n"
-                
+
             # Get the prompt template based on analysis type
             prompt_template = self._get_batch_prompt_template(prompt_type)
-            
+
             # Report progress before LLM call
             if progress_callback:
                 progress_callback(0.4)
-            
+
             # Make the LLM call
             response = ollama.chat(
                 model=self.model_name,
                 messages=[
                     {
                         "role": "system",
-                        "content": self.system_prompt or "You are a helpful journaling assistant that analyzes multiple journal entries."
+                        "content": self.system_prompt
+                        or "You are a helpful journaling assistant that analyzes multiple journal entries.",  # noqa: E501
                     },
                     {
                         "role": "user",
-                        "content": f"{prompt_template}\n\n{combined_content}"
-                    }
+                        "content": f"{prompt_template}\n\n{combined_content}",
+                    },
                 ],
                 options={
                     "temperature": self.temperature,
-                    "num_predict": self.max_tokens
+                    "num_predict": self.max_tokens,
                 },
                 format={
                     "type": "object",
                     "properties": {
                         "summary": {
                             "type": "string",
-                            "description": "A comprehensive summary analyzing all the journal entries together"
+                            "description": "A comprehensive summary analyzing all the journal entries together",  # noqa: E501
                         },
                         "key_themes": {
                             "type": "array",
-                            "description": "List of key themes identified across all entries",
-                            "items": {"type": "string"}
+                            "description": "List of key themes identified across all entries",  # noqa: E501
+                            "items": {"type": "string"},
                         },
                         "mood_trends": {
                             "type": "object",
-                            "description": "Dictionary mapping mood categories to their frequency across entries",
-                            "additionalProperties": {"type": "integer"}
+                            "description": "Dictionary mapping mood categories to their frequency across entries",  # noqa: E501
+                            "additionalProperties": {"type": "integer"},
                         },
                         "notable_insights": {
                             "type": "array",
-                            "description": "List of notable insights or patterns found in the entries",
-                            "items": {"type": "string"}
-                        }
+                            "description": "List of notable insights or patterns found in the entries",  # noqa: E501
+                            "items": {"type": "string"},
+                        },
                     },
-                    "required": ["summary", "key_themes", "mood_trends", "notable_insights"]
-                }
+                    "required": [
+                        "summary",
+                        "key_themes",
+                        "mood_trends",
+                        "notable_insights",
+                    ],
+                },
             )
-            
+
             # Report progress after LLM call
             if progress_callback:
                 progress_callback(0.8)
-                
+
             # Parse the response
             content = response["message"]["content"]
             result = json.loads(content)
-            
+
             # Create the BatchAnalysis object
             batch_analysis = BatchAnalysis(
                 title=title,
@@ -501,19 +521,19 @@ class LLMService:
                 key_themes=result["key_themes"],
                 mood_trends=result["mood_trends"],
                 notable_insights=result["notable_insights"],
-                prompt_type=prompt_type
+                prompt_type=prompt_type,
             )
-            
+
             # Report completion
             if progress_callback:
                 progress_callback(1.0)
-                
+
             return batch_analysis
-            
+
         except Exception as e:
             logger.error(f"Error analyzing entries batch: {e}")
             raise BatchAnalysisError(f"Failed to analyze entries batch: {e}")
-            
+
     def _analyze_large_batch(
         self,
         entries: List[JournalEntry],
@@ -521,16 +541,16 @@ class LLMService:
         prompt_type: str,
         date_range: str,
         entry_ids: List[str],
-        progress_callback: Optional[Callable[[float], None]] = None
+        progress_callback: Optional[Callable[[float], None]] = None,
     ) -> BatchAnalysis:
         """
-        Handle batch analysis for a large number of entries using a hierarchical approach.
-        
+        Handle large batch analysis using a hierarchical approach.
+
         This method:
         1. Splits entries into smaller chunks
         2. Summarizes each chunk
         3. Combines the summaries for final analysis
-        
+
         Args:
             entries: All entries to analyze
             title: Title for the batch analysis
@@ -538,79 +558,93 @@ class LLMService:
             date_range: Date range string for the entries
             entry_ids: List of entry IDs to include in the result
             progress_callback: Optional progress reporting function
-            
+
         Returns:
             BatchAnalysis object with the combined analysis
         """
         # Split entries into batches of 5-10
         batch_size = 5
-        batches = [entries[i:i + batch_size] for i in range(0, len(entries), batch_size)]
-        
+        # fmt: off
+        batches = [
+            entries[i : i + batch_size]  # noqa: E203
+            for i in range(0, len(entries), batch_size)
+        ]
+        # fmt: on
+
         # Track progress per batch
         batch_progress_total = 0.6  # 60% of total progress for batch processing
         batch_progress_per_item = batch_progress_total / len(batches)
-        
+
         # Process each batch to get summaries
         batch_summaries = []
-        
+
         for i, batch in enumerate(batches):
             # Calculate progress for this batch
             batch_start_progress = 0.2 + (i * batch_progress_per_item)
-            
+
             # Define a progress callback for this batch
             def batch_progress_callback(progress_fraction):
                 if progress_callback:
                     # Scale the progress to the overall batch progress
-                    overall_progress = batch_start_progress + (progress_fraction * batch_progress_per_item)
+                    overall_progress = batch_start_progress + (
+                        progress_fraction * batch_progress_per_item
+                    )
                     progress_callback(overall_progress)
-            
+
             # Generate a quick summary for this batch
             try:
                 batch_content = ""
                 for j, entry in enumerate(batch):
-                    batch_content += f"Entry {j+1} - {entry.created_at.strftime('%Y-%m-%d')}:\n"
+                    batch_content += (
+                        f"Entry {j + 1} - {entry.created_at.strftime('%Y-%m-%d')}:\n"
+                    )
                     batch_content += f"Title: {entry.title}\n"
                     batch_content += f"Content: {entry.content}\n\n"
-                
+
                 # Use a simplified prompt for the batch summary
                 prompt = (
                     "Create a brief summary of these journal entries, "
                     "extract key themes, moods, and notable points. "
                     "Keep it concise as this will be used for further analysis."
                 )
-                
+
                 response = ollama.chat(
                     model=self.model_name,
                     messages=[
-                        {"role": "system", "content": "You create concise summaries of journal entries."},
-                        {"role": "user", "content": f"{prompt}\n\n{batch_content}"}
+                        {
+                            "role": "system",
+                            "content": "You create concise summaries of journal entries.",  # noqa: E501
+                        },
+                        {"role": "user", "content": f"{prompt}\n\n{batch_content}"},
                     ],
-                    options={"temperature": 0.3}
+                    options={"temperature": 0.3},
                 )
-                
+
                 batch_summaries.append(response["message"]["content"])
-                
+
                 # Report progress
                 batch_progress_callback(1.0)
-                
+
             except Exception as e:
-                logger.warning(f"Error processing batch {i+1}: {e}")
+                logger.warning(f"Error processing batch {i + 1}: {e}")
                 # Add a placeholder if batch processing fails
-                batch_summaries.append(f"[Batch {i+1}: Processing error - {str(e)}]")
+                batch_summaries.append(f"[Batch {i + 1}: Processing error - {str(e)}]")
                 batch_progress_callback(1.0)
-        
+
         # Now combine all batch summaries for final analysis
         if progress_callback:
             progress_callback(0.8)  # 80% complete after processing all batches
-            
-        combined_summaries = "\n\n".join([
-            f"Batch {i+1} Summary:\n{summary}" 
-            for i, summary in enumerate(batch_summaries)
-        ])
-        
+
+        combined_summaries = "\n\n".join(
+            [
+                f"Batch {i + 1} Summary:\n{summary}"
+                for i, summary in enumerate(batch_summaries)
+            ]
+        )
+
         # Get the prompt template based on analysis type
         prompt_template = self._get_batch_prompt_template(prompt_type)
-        
+
         # Add context about the hierarchical analysis
         hierarchical_prompt = (
             f"{prompt_template}\n\n"
@@ -618,7 +652,7 @@ class LLMService:
             f"that were processed in batches. Please analyze these summaries together "
             f"to provide a comprehensive analysis of all entries in the date range."
         )
-        
+
         # Make the final LLM call
         try:
             response = ollama.chat(
@@ -626,48 +660,54 @@ class LLMService:
                 messages=[
                     {
                         "role": "system",
-                        "content": self.system_prompt or "You are a helpful journaling assistant that analyzes multiple journal entries."
+                        "content": self.system_prompt
+                        or "You are a helpful journaling assistant that analyzes multiple journal entries.",  # noqa: E501
                     },
                     {
                         "role": "user",
-                        "content": f"{hierarchical_prompt}\n\n{combined_summaries}"
-                    }
+                        "content": f"{hierarchical_prompt}\n\n{combined_summaries}",
+                    },
                 ],
                 options={
                     "temperature": self.temperature,
-                    "num_predict": self.max_tokens
+                    "num_predict": self.max_tokens,
                 },
                 format={
                     "type": "object",
                     "properties": {
                         "summary": {
                             "type": "string",
-                            "description": "A comprehensive summary analyzing all the journal entries together"
+                            "description": "A comprehensive summary analyzing all the journal entries together",  # noqa: E501
                         },
                         "key_themes": {
                             "type": "array",
-                            "description": "List of key themes identified across all entries",
-                            "items": {"type": "string"}
+                            "description": "List of key themes identified across all entries",  # noqa: E501
+                            "items": {"type": "string"},
                         },
                         "mood_trends": {
                             "type": "object",
-                            "description": "Dictionary mapping mood categories to their frequency across entries",
-                            "additionalProperties": {"type": "integer"}
+                            "description": "Dictionary mapping mood categories to their frequency across entries",  # noqa: E501
+                            "additionalProperties": {"type": "integer"},
                         },
                         "notable_insights": {
                             "type": "array",
-                            "description": "List of notable insights or patterns found in the entries",
-                            "items": {"type": "string"}
-                        }
+                            "description": "List of notable insights or patterns found in the entries",  # noqa: E501
+                            "items": {"type": "string"},
+                        },
                     },
-                    "required": ["summary", "key_themes", "mood_trends", "notable_insights"]
-                }
+                    "required": [
+                        "summary",
+                        "key_themes",
+                        "mood_trends",
+                        "notable_insights",
+                    ],
+                },
             )
-            
+
             # Parse the response
             content = response["message"]["content"]
             result = json.loads(content)
-            
+
             # Create the BatchAnalysis object
             batch_analysis = BatchAnalysis(
                 title=title,
@@ -677,26 +717,28 @@ class LLMService:
                 key_themes=result["key_themes"],
                 mood_trends=result["mood_trends"],
                 notable_insights=result["notable_insights"],
-                prompt_type=prompt_type
+                prompt_type=prompt_type,
             )
-            
+
             # Report completion
             if progress_callback:
                 progress_callback(1.0)
-                
+
             return batch_analysis
-            
+
         except Exception as e:
             logger.error(f"Error in hierarchical batch analysis: {e}")
-            raise BatchAnalysisError(f"Failed to complete hierarchical batch analysis: {e}")
+            raise BatchAnalysisError(
+                f"Failed to complete hierarchical batch analysis: {e}"
+            )
 
     def _get_batch_prompt_template(self, prompt_type: str) -> str:
         """
         Get the appropriate prompt template for batch analysis.
-        
+
         Args:
             prompt_type: Type of batch analysis (weekly, monthly, topic, etc.)
-            
+
         Returns:
             Prompt template string
         """
@@ -705,7 +747,7 @@ class LLMService:
         for pt in self.config.prompt_types:
             if pt.id == batch_prompt_id:
                 return pt.prompt
-        
+
         # If not found, use default templates based on type
         if prompt_type == "weekly":
             return (
@@ -714,17 +756,17 @@ class LLMService:
                 "Create a comprehensive weekly reflection that summarizes key events, "
                 "thoughts, and emotions from the week. "
                 "Return the analysis in JSON format with the following fields: "
-                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "
+                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "  # noqa: E501
                 "and notable_insights."
             )
         elif prompt_type == "monthly":
             return (
                 "Analyze the following journal entries from the past month. "
-                "Identify long-term themes, changes in perspective, and significant developments. "
+                "Identify long-term themes, changes in perspective, and significant developments. "  # noqa: E501
                 "Create a comprehensive monthly review that captures overall progress, "
                 "challenges, and growth from the month. "
                 "Return the analysis in JSON format with the following fields: "
-                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "
+                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "  # noqa: E501
                 "and notable_insights."
             )
         elif prompt_type == "topic":
@@ -734,7 +776,28 @@ class LLMService:
                 "Create a comprehensive topic analysis that explores how the topic "
                 "has evolved across these entries. "
                 "Return the analysis in JSON format with the following fields: "
-                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "
+                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "  # noqa: E501
+                "and notable_insights."
+            )
+        elif prompt_type == "quarterly":
+            return (
+                "Analyze the following journal entries from the past quarter. "
+                "Identify major themes, significant changes, and overall progress across this time period. "  # noqa: E501
+                "Create a comprehensive quarterly review that captures growth, challenges overcome, "  # noqa: E501
+                "and patterns in your personal and professional life. "
+                "Return the analysis in JSON format with the following fields: "
+                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "  # noqa: E501
+                "and notable_insights."
+            )
+        elif prompt_type == "project":
+            return (
+                "Analyze the following journal entries related to a specific project. "
+                "Track the evolution of the project, challenges encountered, solutions developed, "  # noqa: E501
+                "and insights gained throughout the project timeline. "
+                "Create a comprehensive project retrospective that captures lessons learned "  # noqa: E501
+                "and overall progress. "
+                "Return the analysis in JSON format with the following fields: "
+                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "  # noqa: E501
                 "and notable_insights."
             )
         else:
@@ -744,10 +807,10 @@ class LLMService:
                 "Identify common themes, patterns, and insights across all entries. "
                 "Create a comprehensive analysis that summarizes key points. "
                 "Return the analysis in JSON format with the following fields: "
-                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "
+                "summary, key_themes, mood_trends (as an object mapping moods to frequencies), "  # noqa: E501
                 "and notable_insights."
             )
-    
+
     def save_favorite_summary(self, entry_id: str, summary: EntrySummary) -> bool:
         """
         Save a summary as a favorite for a specific entry.
@@ -871,7 +934,8 @@ class LLMService:
                     continue  # Skip very short terms
 
                 text_results = self.storage_manager.text_search(
-                    query=term, limit=limit  # Reasonable limit for each term
+                    query=term,
+                    limit=limit,  # Reasonable limit for each term
                 )
 
                 # Add unique entries not already found by semantic search

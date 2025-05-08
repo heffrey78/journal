@@ -27,6 +27,34 @@ export interface UpdateJournalEntryInput {
   images?: string[];
 }
 
+// Batch analysis interfaces
+export interface BatchAnalysis {
+  id: string;
+  title: string;
+  entry_ids: string[];
+  date_range: string;
+  created_at: string;
+  summary: string;
+  key_themes: string[];
+  mood_trends: Record<string, number>;
+  notable_insights: string[];
+  prompt_type: string;
+}
+
+export interface BatchAnalysisRequest {
+  entry_ids: string[];
+  title?: string;
+  prompt_type: string;
+}
+
+export interface BatchAnalysisSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  prompt_type: string;
+  entry_count: number;
+}
+
 // Search interfaces
 export interface SearchQuery {
   q?: string;

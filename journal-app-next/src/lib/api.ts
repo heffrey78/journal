@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { BatchAnalysis, BatchAnalysisRequest, BatchAnalysisSummary } from './types';
 
 // Configure base URL for API requests
 const api = axios.create({
@@ -174,6 +175,78 @@ export const tagsApi = {
   getTags: async (): Promise<string[]> => {
     const response = await api.get('/tags');
     return response.data;
+  },
+};
+
+// API functions for batch analysis
+export const batchAnalysisApi = {
+  // Create a new batch analysis
+  analyzeBatch: async (request: BatchAnalysisRequest): Promise<BatchAnalysis> => {
+    const response = await api.post('/batch/analyze', request);
+    return response.data;
+  },
+
+  // Get all batch analyses with pagination
+  getBatchAnalyses: async (
+    params?: { limit?: number; offset?: number }
+  ): Promise<BatchAnalysis[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+
+    const queryString = queryParams.toString();
+    const url = `/batch/analyses${queryString ? `?${queryString}` : ''}`;
+
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Get a specific batch analysis by ID
+  getBatchAnalysis: async (batchId: string): Promise<BatchAnalysis> => {
+    const response = await api.get(`/batch/analyses/${batchId}`);
+    return response.data;
+  },
+
+  // Delete a batch analysis
+  deleteBatchAnalysis: async (batchId: string): Promise<void> => {
+    await api.delete(`/batch/analyses/${batchId}`);
+  },
+
+  // Get batch analyses for a specific entry
+  getEntryBatchAnalyses: async (entryId: string): Promise<BatchAnalysisSummary[]> => {
+    const response = await api.get(`/entries/${entryId}/batch-analyses`);
+    return response.data;
+  },
+
+  // Utility function to get different prompt types for batch analysis
+  getAvailablePromptTypes: (): { id: string; name: string; description: string }[] => {
+    return [
+      {
+        id: 'weekly',
+        name: 'Weekly Review',
+        description: 'Analyze entries from a week to identify patterns, themes, and insights.'
+      },
+      {
+        id: 'monthly',
+        name: 'Monthly Review',
+        description: 'Analyze monthly entries to identify long-term trends and developments.'
+      },
+      {
+        id: 'topic',
+        name: 'Topic Analysis',
+        description: 'Analyze entries related to a specific topic or theme.'
+      },
+      {
+        id: 'quarterly',
+        name: 'Quarterly Review',
+        description: 'Analyze entries from a quarter for major themes and significant changes.'
+      },
+      {
+        id: 'project',
+        name: 'Project Analysis',
+        description: 'Track project evolution, challenges, solutions, and insights over time.'
+      },
+    ];
   },
 };
 
@@ -401,4 +474,12 @@ export const organizationApi = {
   },
 };
 
-export default { entriesApi, searchApi, tagsApi, llmApi, imagesApi, organizationApi };
+export default {
+  entriesApi,
+  searchApi,
+  tagsApi,
+  llmApi,
+  imagesApi,
+  organizationApi,
+  batchAnalysisApi
+};

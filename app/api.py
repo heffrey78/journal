@@ -1,3 +1,4 @@
+import logging
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -8,6 +9,7 @@ from fastapi import (
     UploadFile,
     File,
     Form,
+    Path,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -16,12 +18,20 @@ from fastapi.middleware.cors import CORSMiddleware  # Add this import
 from typing import List, Optional, Any, Union
 from datetime import datetime, date
 from pydantic import BaseModel, Field
+import traceback
 
-from app.models import JournalEntry, LLMConfig
+from app.models import JournalEntry, LLMConfig, BatchAnalysisRequest, BatchAnalysis
 from app.storage import StorageManager
-from app.llm_service import LLMService, EntrySummary
+from app.llm_service import LLMService, EntrySummary, BatchAnalysisError
 from app.organization_routes import organization_router
-from app.utils import get_storage, get_llm_service  # Import from utils module
+from app.utils import get_storage, get_llm_service
+
+# Import from utils module# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 app = FastAPI(
     title="Journal API", description="API for managing journal entries", version="0.1.0"
@@ -1328,4 +1338,180 @@ async def create_folder(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to create folder: {str(e)}"
+        )
+
+
+# ======================
+# Batch Analysis Routes
+# ======================
+
+
+@app.post("/batch/analyze", response_model=BatchAnalysis, tags=["batch"])
+async def analyze_entries_batch(
+    request: BatchAnalysisRequest,
+    llm: LLMService = Depends(get_llm_service),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Generate an analysis for a batch of journal entries.
+
+    This endpoint processes multiple entries together to identify patterns,
+    common themes, and insights across them.
+    """
+    try:
+        # Validate entry IDs
+        entries = []
+        for entry_id in request.entry_ids:
+            entry = storage.get_entry(entry_id)
+            if not entry:
+                raise HTTPException(
+                    status_code=404, detail=f"Entry with ID {entry_id} not found"
+                )
+            entries.append(entry)
+
+        # Check if we have enough entries to analyze
+        if len(entries) < 2:
+            raise HTTPException(
+                status_code=400, detail="Batch analysis requires at least 2 entries"
+            )
+
+        # Set up SSE response for progress updates if supported
+        progress = {"value": 0}
+
+        def progress_callback(value):
+            progress["value"] = value
+
+        # Generate the batch analysis
+        batch_analysis = llm.analyze_entries_batch(
+            entries=entries,
+            title=request.title,
+            prompt_type=request.prompt_type,
+            progress_callback=progress_callback,
+        )
+
+        # Save the analysis to storage
+        if not storage.save_batch_analysis(batch_analysis):
+            logger.error("Failed to save batch analysis to database")
+
+        # Return the completed analysis
+        return batch_analysis
+
+    except BatchAnalysisError as e:
+        logger.error(f"Batch analysis error: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to analyze entries: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in analyze_entries_batch: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {str(e)}"
+        )
+
+
+@app.get("/batch/analyses", response_model=List[BatchAnalysis], tags=["batch"])
+async def get_batch_analyses(
+    limit: int = Query(
+        10, ge=1, le=100, description="Maximum number of analyses to return"
+    ),
+    offset: int = Query(0, ge=0, description="Number of analyses to skip"),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Get a list of all batch analyses with pagination.
+
+    Results are ordered by creation date, with newest first.
+    """
+    try:
+        return storage.get_batch_analyses(limit=limit, offset=offset)
+    except Exception as e:
+        logger.error(f"Error retrieving batch analyses list: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve batch analyses: {str(e)}"
+        )
+
+
+@app.get("/batch/analyses/{batch_id}", response_model=BatchAnalysis, tags=["batch"])
+async def get_batch_analysis(
+    batch_id: str = Path(..., description="The ID of the batch analysis to retrieve"),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Get a specific batch analysis by its ID.
+    """
+    try:
+        batch_analysis = storage.get_batch_analysis(batch_id)
+        if not batch_analysis:
+            raise HTTPException(
+                status_code=404, detail=f"Batch analysis with ID {batch_id} not found"
+            )
+        return batch_analysis
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving batch analysis {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve batch analysis: {str(e)}"
+        )
+
+
+@app.delete("/batch/analyses/{batch_id}", tags=["batch"])
+async def delete_batch_analysis(
+    batch_id: str = Path(..., description="The ID of the batch analysis to delete"),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Delete a batch analysis by its ID.
+    """
+    try:
+        # Check if the batch analysis exists
+        if not storage.get_batch_analysis(batch_id):
+            raise HTTPException(
+                status_code=404, detail=f"Batch analysis with ID {batch_id} not found"
+            )
+
+        # Delete the batch analysis
+        success = storage.delete_batch_analysis(batch_id)
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Failed to delete batch analysis"
+            )
+
+        return {"message": f"Batch analysis {batch_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting batch analysis {batch_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete batch analysis: {str(e)}"
+        )
+
+
+@app.get("/entries/{entry_id}/batch-analyses", tags=["batch"])
+async def get_entry_batch_analyses(
+    entry_id: str = Path(..., description="The ID of the journal entry"),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Get all batch analyses that include a specific entry.
+
+    Returns simplified batch analysis information.
+    """
+    try:
+        # Check if the entry exists
+        if not storage.get_entry(entry_id):
+            raise HTTPException(
+                status_code=404, detail=f"Entry with ID {entry_id} not found"
+            )
+
+        # Get the batch analyses for this entry
+        analyses = storage.get_entry_batch_analyses(entry_id)
+        return analyses
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving batch analyses for entry {entry_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve batch analyses for entry: {str(e)}",
         )

@@ -1,37 +1,43 @@
 'use client';
 
 import React from 'react';
+import Container from './Container';
+import Cluster from './Cluster';
+import { cn } from '@/lib/utils';
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 py-6">
-      <div className="container mx-auto px-4">
-        <div className="flex flex-col md:flex-row justify-between items-center">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
+    <footer
+      className="border-t border-border py-6"
+      style={{ backgroundColor: 'var(--footer-background, var(--background))' }}
+    >
+      <Container>
+        <Cluster
+          justify="between"
+          align="center"
+          className="flex-col md:flex-row"
+        >
+          <p className="text-muted-foreground text-sm">
             © {new Date().getFullYear()} Journal App. All rights reserved.
           </p>
           <div className="mt-4 md:mt-0">
-            <ul className="flex space-x-4">
-              <li>
-                <a
-                  href="#"
-                  className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-sm"
-                >
-                  Privacy Policy
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-sm"
-                >
-                  Terms of Service
-                </a>
-              </li>
-            </ul>
+            <Cluster gap="md">
+              <a
+                href="#"
+                className="text-muted-foreground hover:text-primary text-sm transition-colors"
+              >
+                Privacy Policy
+              </a>
+              <a
+                href="#"
+                className="text-muted-foreground hover:text-primary text-sm transition-colors"
+              >
+                Terms of Service
+              </a>
+            </Cluster>
           </div>
-        </div>
-      </div>
+        </Cluster>
+      </Container>
     </footer>
   );
 };

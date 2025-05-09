@@ -73,6 +73,11 @@ export interface ThemePreferences {
   fontFamily: FontFamily;
   fontSize: number;
   lineHeight: number;
+  complimentaryColors?: {
+    header?: string;
+    sidebar?: string;
+    footer?: string;
+  };
 }
 
 // Settings interface

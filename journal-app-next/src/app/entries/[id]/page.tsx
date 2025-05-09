@@ -10,6 +10,8 @@ import Button from '@/components/ui/Button';
 import { entriesApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import { format } from 'date-fns';
+import Container from '@/components/layout/Container';
+import ContentPadding from '@/components/layout/ContentPadding';
 
 export default function EntryDetailPage() {
   const router = useRouter();
@@ -105,9 +107,13 @@ export default function EntryDetailPage() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
-        </div>
+        <Container maxWidth="4xl" className="mx-auto">
+          <ContentPadding size="md">
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+          </ContentPadding>
+        </Container>
       </MainLayout>
     );
   }
@@ -115,150 +121,158 @@ export default function EntryDetailPage() {
   if (error || !entry) {
     return (
       <MainLayout>
-        <div className="bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-4 rounded-md">
-          {error || 'Entry not found'}
-        </div>
-        <div className="mt-4">
-          <Button onClick={() => router.push('/entries')}>
-            Back to Entries
-          </Button>
-        </div>
+        <Container maxWidth="4xl" className="mx-auto">
+          <ContentPadding size="md">
+            <div className="bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-4 rounded-md">
+              {error || 'Entry not found'}
+            </div>
+            <div className="mt-4">
+              <Button onClick={() => router.push('/entries')}>
+                Back to Entries
+              </Button>
+            </div>
+          </ContentPadding>
+        </Container>
       </MainLayout>
     );
   }
 
   return (
     <MainLayout>
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        {!isEditing ? (
-          <>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white break-words">
-              {entry.title || 'Untitled Entry'}
-            </h1>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setIsEditing(true)}>
-                Edit
-              </Button>
-              <Button
-                variant={entry.favorite ? 'primary' : 'outline'}
-                onClick={handleToggleFavorite}
-                className={entry.favorite ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
-              >
-                {entry.favorite ? 'Favorited' : 'Favorite'}
-              </Button>
-              <Button variant="danger" onClick={handleDelete}>
-                Delete
-              </Button>
-            </div>
-          </>
-        ) : (
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Edit Entry
-          </h1>
-        )}
-      </div>
-
-      {!isEditing ? (
-        <>
-          <div className="flex items-center gap-x-2 text-sm text-gray-500 dark:text-gray-400 mb-6">
-            <span>Created: {format(new Date(entry.created_at), 'MMM d, yyyy h:mm a')}</span>
-            {entry.created_at !== entry.updated_at && (
-              <span>• Updated: {format(new Date(entry.updated_at), 'MMM d, yyyy h:mm a')}</span>
+      <Container maxWidth="4xl" className="mx-auto">
+        <ContentPadding size="md">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {!isEditing ? (
+              <>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white break-words">
+                  {entry.title || 'Untitled Entry'}
+                </h1>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setIsEditing(true)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant={entry.favorite ? 'primary' : 'outline'}
+                    onClick={handleToggleFavorite}
+                    className={entry.favorite ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
+                  >
+                    {entry.favorite ? 'Favorited' : 'Favorite'}
+                  </Button>
+                  <Button variant="danger" onClick={handleDelete}>
+                    Delete
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Edit Entry
+              </h1>
             )}
           </div>
 
-          <div className="bg-card text-card-foreground rounded-lg shadow-md p-6 mb-6">
-            <MarkdownRenderer content={entry.content} />
-          </div>
-
-          {entry.tags && entry.tags.length > 0 && (
-            <div className="mt-4 mb-6">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Tags</h2>
-              <div className="flex flex-wrap gap-2">
-                {entry.tags.map(tag => (
-                  <span
-                    key={tag}
-                    className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full"
-                  >
-                    {tag}
-                  </span>
-                ))}
+          {!isEditing ? (
+            <>
+              <div className="flex items-center gap-x-2 text-sm text-gray-500 dark:text-gray-400 mb-6">
+                <span>Created: {format(new Date(entry.created_at), 'MMM d, yyyy h:mm a')}</span>
+                {entry.created_at !== entry.updated_at && (
+                  <span>• Updated: {format(new Date(entry.updated_at), 'MMM d, yyyy h:mm a')}</span>
+                )}
               </div>
-            </div>
+
+              <div className="bg-card text-card-foreground rounded-lg shadow-md p-6 mb-6">
+                <MarkdownRenderer content={entry.content} />
+              </div>
+
+              {entry.tags && entry.tags.length > 0 && (
+                <div className="mt-4 mb-6">
+                  <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Tags</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {entry.tags.map(tag => (
+                      <span
+                        key={tag}
+                        className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add the EntryAnalysis component */}
+              <EntryAnalysis entryId={id} />
+
+              <div className="mt-6">
+                <Button onClick={() => router.push('/entries')}>
+                  Back to Entries
+                </Button>
+              </div>
+            </>
+          ) : (
+            <form className="space-y-6">
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Entry title (optional)"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Content
+                </label>
+                <div className="prose-wrapper">
+                  <MarkdownEditor
+                    value={content}
+                    onChange={setContent}
+                    entryId={id}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Tags (comma separated)
+                </label>
+                <input
+                  type="text"
+                  id="tags"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="e.g. personal, work, ideas"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSave}
+                  isLoading={isSaving}
+                  disabled={!content.trim()}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </form>
           )}
-
-          {/* Add the EntryAnalysis component */}
-          <EntryAnalysis entryId={id} />
-
-          <div className="mt-6">
-            <Button onClick={() => router.push('/entries')}>
-              Back to Entries
-            </Button>
-          </div>
-        </>
-      ) : (
-        <form className="space-y-6">
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Title
-            </label>
-            <input
-              type="text"
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Entry title (optional)"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="content" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Content
-            </label>
-            <div className="prose-wrapper">
-              <MarkdownEditor
-                value={content}
-                onChange={setContent}
-                entryId={id}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Tags (comma separated)
-            </label>
-            <input
-              type="text"
-              id="tags"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="e.g. personal, work, ideas"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsEditing(false)}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSave}
-              isLoading={isSaving}
-              disabled={!content.trim()}
-            >
-              Save Changes
-            </Button>
-          </div>
-        </form>
-      )}
+        </ContentPadding>
+      </Container>
     </MainLayout>
   );
 }

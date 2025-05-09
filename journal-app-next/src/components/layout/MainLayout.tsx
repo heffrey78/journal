@@ -1,21 +1,39 @@
 'use client';
 
 import React from 'react';
+import { cn } from '@/lib/utils';
 import Header from './Header';
 import Footer from './Footer';
 import FolderSidebar from './FolderSidebar';
+import Container from './Container';
 
 interface MainLayoutProps {
   children: React.ReactNode;
+  className?: string;
+  hideSidebar?: boolean;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+/**
+ * MainLayout component for the application's main layout structure
+ * Provides a consistent layout with header, footer, and optional sidebar
+ */
+const MainLayout: React.FC<MainLayoutProps> = ({
+  children,
+  className,
+  hideSidebar = false
+}) => {
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
+    <div className={cn(
+      'flex flex-col min-h-screen bg-background text-foreground',
+      className
+    )}>
       <Header />
       <div className="flex flex-grow">
-        <FolderSidebar />
-        <main className="flex-grow container mx-auto px-4 py-8">
+        {!hideSidebar && <FolderSidebar />}
+        <main className={cn(
+          "flex-grow",
+          hideSidebar ? 'w-full' : ''
+        )}>
           {children}
         </main>
       </div>

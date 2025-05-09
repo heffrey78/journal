@@ -10,6 +10,7 @@ type ThemeContextType = {
   setFontFamily: (fontFamily: FontFamily) => void;
   setFontSize: (size: number) => void;
   setLineHeight: (lineHeight: number) => void;
+  setComplimentaryColors: (colors: { header?: string; sidebar?: string; footer?: string }) => void;
   toggleDarkMode: () => void;
 };
 
@@ -30,12 +31,34 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Check for full theme settings
       const savedThemePrefs = localStorage.getItem('themePreferences');
 
+      // Check for complimentary colors
+      const savedCompColors = localStorage.getItem('themeCompColors');
+      let complimentaryColors;
+
+      if (savedCompColors) {
+        complimentaryColors = JSON.parse(savedCompColors);
+      }
+
       if (savedThemePrefs) {
         const parsedTheme = JSON.parse(savedThemePrefs) as ThemePreferences;
+        // Merge with complimentary colors if available
+        if (complimentaryColors) {
+          parsedTheme.complimentaryColors = complimentaryColors;
+        }
         setTheme(parsedTheme);
       } else if (savedColorTheme) {
         // Migrate legacy setting
-        setTheme(prev => ({...prev, colorTheme: savedColorTheme}));
+        setTheme(prev => ({
+          ...prev,
+          colorTheme: savedColorTheme,
+          complimentaryColors: complimentaryColors
+        }));
+      } else if (complimentaryColors) {
+        // Just apply complimentary colors
+        setTheme(prev => ({
+          ...prev,
+          complimentaryColors
+        }));
       }
 
       // Initialize theme variables
@@ -109,6 +132,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(prev => ({...prev, lineHeight}));
   };
 
+  const setComplimentaryColors = (colors: { header?: string; sidebar?: string; footer?: string }) => {
+    setTheme(prev => ({
+      ...prev,
+      complimentaryColors: {
+        ...prev.complimentaryColors,
+        ...colors
+      }
+    }));
+  };
+
   const toggleDarkMode = () => {
     setTheme(prev => ({
       ...prev,
@@ -129,6 +162,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setFontFamily,
         setFontSize,
         setLineHeight,
+        setComplimentaryColors,
         toggleDarkMode
       }}
     >

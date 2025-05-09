@@ -30,11 +30,16 @@ def migrate_database(db_path="./journal_data/journal.db"):
     cursor = conn.cursor()
 
     try:
+        # Enable foreign keys
+        cursor.execute("PRAGMA foreign_keys = ON")
+
+        # Get list of existing tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        existing_tables = [row[0] for row in cursor.fetchall()]
+        logger.info(f"Existing tables: {', '.join(existing_tables) or 'none'}")
+
         # Check if config table exists
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
-        )
-        if not cursor.fetchone():
+        if "config" not in existing_tables:
             logger.info("Creating config table")
             cursor.execute(
                 """
@@ -51,6 +56,7 @@ def migrate_database(db_path="./journal_data/journal.db"):
             )
             """
             )
+            logger.info("Config table created successfully")
         else:
             # Check if min_similarity column exists in config table
             cursor.execute("PRAGMA table_info(config)")
@@ -60,12 +66,10 @@ def migrate_database(db_path="./journal_data/journal.db"):
                 cursor.execute(
                     "ALTER TABLE config ADD COLUMN min_similarity REAL DEFAULT 0.5"
                 )
+                logger.info("min_similarity column added successfully")
 
         # Check if prompt_types table exists
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='prompt_types'"
-        )
-        if not cursor.fetchone():
+        if "prompt_types" not in existing_tables:
             logger.info("Creating prompt_types table")
             cursor.execute(
                 """
@@ -79,6 +83,7 @@ def migrate_database(db_path="./journal_data/journal.db"):
             )
             """
             )
+            logger.info("prompt_types table created successfully")
 
             # Populate with default prompt types
             logger.info("Populating default prompt types")
@@ -95,12 +100,10 @@ def migrate_database(db_path="./journal_data/journal.db"):
                     "VALUES (?, ?, ?, ?)",
                     (pt.id, config_id, pt.name, pt.prompt),
                 )
+            logger.info("Default prompt types added successfully")
 
         # Check if batch_analyses table exists
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='batch_analyses'"
-        )
-        if not cursor.fetchone():
+        if "batch_analyses" not in existing_tables:
             logger.info("Creating batch_analyses table")
             cursor.execute(
                 """
@@ -117,17 +120,17 @@ def migrate_database(db_path="./journal_data/journal.db"):
                 )
                 """
             )
-            
+            logger.info("batch_analyses table created successfully")
+
             # Create index for batch_analyses
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_batch_analyses_created_at ON batch_analyses(created_at)"
+                """CREATE INDEX IF NOT EXISTS idx_batch_analyses_created_at
+                ON batch_analyses(created_at)"""
             )
-        
+            logger.info("batch_analyses index created successfully")
+
         # Check if batch_analysis_entries table exists
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='batch_analysis_entries'"
-        )
-        if not cursor.fetchone():
+        if "batch_analysis_entries" not in existing_tables:
             logger.info("Creating batch_analysis_entries relation table")
             cursor.execute(
                 """
@@ -135,23 +138,50 @@ def migrate_database(db_path="./journal_data/journal.db"):
                     batch_id TEXT,
                     entry_id TEXT,
                     PRIMARY KEY (batch_id, entry_id),
-                    FOREIGN KEY (batch_id) REFERENCES batch_analyses(id) ON DELETE CASCADE,
-                    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+                    FOREIGN KEY (batch_id) REFERENCES batch_analyses(id)
+                    ON DELETE CASCADE,
+                    FOREIGN KEY (entry_id) REFERENCES entries(id)
+                    ON DELETE CASCADE
                 )
                 """
             )
-            
+            logger.info("batch_analysis_entries table created successfully")
+
             # Create index for batch_analysis_entries
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_batch_analysis_entries_entry_id ON batch_analysis_entries(entry_id)"
+                """CREATE INDEX IF NOT EXISTS idx_batch_analysis_entries_entry_id
+                ON batch_analysis_entries(entry_id)"""
             )
+            logger.info("batch_analysis_entries index created successfully")
+
+        # Verify all tables were created properly
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables_after_migration = [row[0] for row in cursor.fetchall()]
+        required_tables = [
+            "config",
+            "prompt_types",
+            "batch_analyses",
+            "batch_analysis_entries",
+        ]
+        missing_tables = [
+            table for table in required_tables if table not in tables_after_migration
+        ]
+
+        if missing_tables:
+            logger.error(f"Failed to create tables: {', '.join(missing_tables)}")
+            conn.rollback()
+            return False
 
         conn.commit()
         logger.info("Database migration completed successfully")
+        logger.info(f"Tables after migration: {', '.join(tables_after_migration)}")
         return True
 
     except Exception as e:
-        logger.error(f"Migration error: {e}")
+        logger.error(f"Migration error: {str(e)}")
+        import traceback
+
+        logger.error(traceback.format_exc())
         conn.rollback()
         return False
 
@@ -160,4 +190,8 @@ def migrate_database(db_path="./journal_data/journal.db"):
 
 
 if __name__ == "__main__":
-    migrate_database()
+    success = migrate_database()
+    if success:
+        logger.info("Database migration script executed successfully")
+    else:
+        logger.error("Database migration failed")

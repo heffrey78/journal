@@ -32,6 +32,11 @@ module.exports = {
           foreground: 'var(--muted-foreground)',
         },
         border: 'var(--border)',
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
+        },
+        ring: 'var(--ring)',
       },
       typography: {
         DEFAULT: {
@@ -40,9 +45,24 @@ module.exports = {
           },
         },
       },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: 0 },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: 0 },
+        },
+      },
     },
   },
   plugins: [
-    require('@tailwindcss/typography'),
+    import('@tailwindcss/typography'),
+    import('tailwindcss-animate'),
   ],
 }

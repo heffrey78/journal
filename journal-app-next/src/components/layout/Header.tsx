@@ -4,12 +4,13 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ThemeToggle from '../theme/ThemeToggle';
+import { ChartBarIcon } from '@heroicons/react/24/outline';
 
 const Header: React.FC = () => {
   const pathname = usePathname();
 
   const isActive = (path: string) => {
-    return pathname === path ? 'border-b-2 border-blue-500' : '';
+    return pathname === path || pathname?.startsWith(path + '/') ? 'border-b-2 border-blue-500' : '';
   };
 
   return (
@@ -33,6 +34,13 @@ const Header: React.FC = () => {
             className={`text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-1 py-2 ${isActive('/entries')}`}
           >
             Entries
+          </Link>
+          <Link
+            href="/analyses"
+            className={`text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 px-1 py-2 flex items-center ${isActive('/analyses')}`}
+          >
+            <ChartBarIcon className="h-4 w-4 mr-1" />
+            Analyses
           </Link>
           <Link
             href="/search"

@@ -28,8 +28,10 @@ function initTheme() {
         (colorTheme === 'system' &&
          window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       root.classList.add('dark');
+      root.setAttribute('data-theme', 'dark');
     } else {
       root.classList.add('light');
+      root.setAttribute('data-theme', 'light');
     }
 
     // Apply custom colors
@@ -50,4 +52,5 @@ function initTheme() {
   }
 }
 
+// Script to be executed before page loads to prevent flash of wrong theme
 export const themeScript = `(${initTheme.toString()})()`;

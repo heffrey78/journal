@@ -2,28 +2,36 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import Card from '@/components/ui/Card';
-import { JournalEntry } from '@/lib/types';  // Import from types.ts instead of api.ts
-import { organizationApi } from '@/lib/api';
+import { JournalEntry, BatchAnalysisRequest, BatchAnalysis } from '@/lib/types';
+import { organizationApi, batchAnalysisApi } from '@/lib/api';
+import { useCompatRouter } from '@/lib/routerUtils';
 import MoveEntriesDialog from '@/components/dialogs/MoveEntriesDialog';
-import { FolderIcon, ArrowsRightLeftIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import BatchAnalysisDialog from '@/components/dialogs/BatchAnalysisDialog';
+import { FolderIcon, ArrowsRightLeftIcon, CheckCircleIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 
 interface EntryListProps {
   entries: JournalEntry[];
   showExcerpt?: boolean;
   showMoveAction?: boolean;
+  showAnalysisAction?: boolean;  // New prop for batch analysis
   currentFolder?: string;
+  onAnalysisComplete?: (analysis: BatchAnalysis) => void;  // Optional callback when analysis completes
 }
 
 const EntryList: React.FC<EntryListProps> = ({
   entries,
   showExcerpt = true,
   showMoveAction = false,
-  currentFolder
+  showAnalysisAction = true,  // Enable by default
+  currentFolder,
+  onAnalysisComplete
 }) => {
+  const router = useCompatRouter();
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [isMoveDialogOpen, setIsMoveDialogOpen] = useState(false);
+  const [isAnalysisDialogOpen, setIsAnalysisDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -80,6 +88,13 @@ const EntryList: React.FC<EntryListProps> = ({
     }
   };
 
+  // Open batch analysis dialog
+  const openAnalysisDialog = () => {
+    if (selectedEntries.length > 0) {
+      setIsAnalysisDialogOpen(true);
+    }
+  };
+
   // Handle move entries
   const handleMoveEntries = async (destinationFolder: string | null) => {
     if (selectedEntries.length === 0) return;
@@ -121,6 +136,52 @@ const EntryList: React.FC<EntryListProps> = ({
     }
   };
 
+  // Handle batch analysis
+  const handleAnalyzeEntries = async (request: BatchAnalysisRequest) => {
+    if (selectedEntries.length === 0) return;
+
+    try {
+      setIsProcessing(true);
+
+      // Call API to analyze entries
+      const analysis = await batchAnalysisApi.analyzeBatch(request);
+
+      // Show success message
+      setStatusMessage({
+        text: `Successfully analyzed ${selectedEntries.length} entries`,
+        type: 'success'
+      });
+
+      // Clear selection and exit selection mode
+      setSelectedEntries([]);
+      setSelectionMode(false);
+
+      // Auto-hide status message after 3 seconds
+      setTimeout(() => {
+        setStatusMessage(null);
+      }, 3000);
+
+      // If callback provided, call it with the analysis result
+      if (onAnalysisComplete) {
+        onAnalysisComplete(analysis);
+      } else {
+        // Navigate to the analysis result page
+        router.push(`/analyses/${analysis.id}`);
+      }
+
+      return analysis;
+    } catch (error) {
+      console.error('Failed to analyze entries:', error);
+      setStatusMessage({
+        text: 'Failed to analyze entries. Please try again.',
+        type: 'error'
+      });
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (entries.length === 0) {
     return (
       <div className="text-center py-8">
@@ -132,7 +193,7 @@ const EntryList: React.FC<EntryListProps> = ({
   return (
     <div>
       {/* Action Bar */}
-      {showMoveAction && (
+      {(showMoveAction || showAnalysisAction) && (
         <div className="mb-4 flex flex-wrap justify-between items-center gap-2">
           {selectionMode ? (
             <>
@@ -148,18 +209,36 @@ const EntryList: React.FC<EntryListProps> = ({
                 </span>
               </div>
               <div className="flex items-center space-x-2">
-                <button
-                  onClick={openMoveDialog}
-                  disabled={selectedEntries.length === 0 || isProcessing}
-                  className={`flex items-center space-x-1 px-3 py-1.5 text-sm rounded ${
-                    selectedEntries.length > 0
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  <FolderIcon className="h-4 w-4" />
-                  <span>Move {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
-                </button>
+                {showAnalysisAction && (
+                  <button
+                    onClick={openAnalysisDialog}
+                    disabled={selectedEntries.length < 2 || isProcessing}
+                    className={`flex items-center space-x-1 px-3 py-1.5 text-sm rounded ${
+                      selectedEntries.length >= 2
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <ChartBarIcon className="h-4 w-4" />
+                    <span>Analyze {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
+                  </button>
+                )}
+
+                {showMoveAction && (
+                  <button
+                    onClick={openMoveDialog}
+                    disabled={selectedEntries.length === 0 || isProcessing}
+                    className={`flex items-center space-x-1 px-3 py-1.5 text-sm rounded ${
+                      selectedEntries.length > 0
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <FolderIcon className="h-4 w-4" />
+                    <span>Move {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
+                  </button>
+                )}
+
                 <button
                   onClick={toggleSelectionMode}
                   className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -169,14 +248,26 @@ const EntryList: React.FC<EntryListProps> = ({
               </div>
             </>
           ) : (
-            <div className="ml-auto">
-              <button
-                onClick={toggleSelectionMode}
-                className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <ArrowsRightLeftIcon className="h-4 w-4 mr-1" />
-                <span>Move Entries</span>
-              </button>
+            <div className="ml-auto flex space-x-2">
+              {showAnalysisAction && (
+                <button
+                  onClick={toggleSelectionMode}
+                  className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <ChartBarIcon className="h-4 w-4 mr-1" />
+                  <span>Analyze Entries</span>
+                </button>
+              )}
+
+              {showMoveAction && (
+                <button
+                  onClick={toggleSelectionMode}
+                  className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <ArrowsRightLeftIcon className="h-4 w-4 mr-1" />
+                  <span>Move Entries</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -243,9 +334,9 @@ const EntryList: React.FC<EntryListProps> = ({
                 </div>
                 {showExcerpt && (
                   <div className="mt-2 text-gray-600 dark:text-gray-300 excerpt-container">
-                    <MarkdownRenderer 
+                    <MarkdownRenderer
                       content={getExcerpt(entry.content)}
-                      className="excerpt-markdown" 
+                      className="excerpt-markdown"
                     />
                   </div>
                 )}
@@ -278,6 +369,14 @@ const EntryList: React.FC<EntryListProps> = ({
         onMove={handleMoveEntries}
         entryCount={selectedEntries.length}
         currentFolder={currentFolder}
+      />
+
+      {/* Batch Analysis dialog */}
+      <BatchAnalysisDialog
+        isOpen={isAnalysisDialogOpen}
+        onClose={() => setIsAnalysisDialogOpen(false)}
+        onAnalyze={handleAnalyzeEntries}
+        entryIds={selectedEntries}
       />
     </div>
   );

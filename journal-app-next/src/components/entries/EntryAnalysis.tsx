@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { EntrySummary, entriesApi } from '@/lib/api';
 import { llmApi } from '@/lib/api';
 import { PromptType } from '@/lib/types';
-import Button from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 interface EntryAnalysisProps {
   entryId: string;
@@ -118,167 +121,171 @@ const EntryAnalysis: React.FC<EntryAnalysisProps> = ({ entryId }) => {
   };
 
   return (
-    <div className="mt-8 bg-card text-card-foreground rounded-lg shadow-md p-6">
-      <h2 className="text-xl font-semibold mb-4">
-        AI Entry Analysis
-      </h2>
-
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-          <div className="flex-grow">
-            <label htmlFor="prompt-type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Analysis Type:
-            </label>
-            {isLoadingConfig ? (
-              <div className="w-full sm:w-auto px-3 py-2 border border-border rounded-md bg-card text-muted-foreground">
-                Loading options...
-              </div>
-            ) : (
-              <select
-                id="prompt-type"
-                value={promptType}
-                onChange={(e) => setPromptType(e.target.value)}
-                className="w-full sm:w-auto px-3 py-2 border border-border rounded-md bg-card text-card-foreground"
-                disabled={isAnalyzing}
-              >
-                {promptTypes.map(type => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <div className="mt-2 sm:mt-0">
-            <Button
-              onClick={handleAnalyzeEntry}
-              isLoading={isAnalyzing}
-              disabled={isAnalyzing || isLoadingConfig}
-              size="md"
-            >
-              Analyze Entry
-            </Button>
-          </div>
-        </div>
-
-        {isAnalyzing && (
-          <div className="mt-4">
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-in-out"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {progress < 30 ? 'Processing entry content...' :
-               progress < 60 ? 'Analyzing themes and patterns...' :
-               'Finalizing results...'}
-            </p>
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-4 rounded">
-            <p>{error}</p>
-            <Button
-              className="mt-2"
-              onClick={handleAnalyzeEntry}
-              size="sm"
-              variant="outline"
-            >
-              Retry
-            </Button>
-          </div>
-        )}
-
-        {currentSummary && !isAnalyzing && (
-          <div className="mt-4">
-            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 rounded-lg p-4">
-              <div className="flex justify-between items-start">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Analysis Results</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveAsFavorite}
+    <Card className="mt-8">
+      <CardHeader>
+        <CardTitle>AI Entry Analysis</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+            <div className="flex-grow">
+              <label htmlFor="prompt-type" className="block text-sm font-medium text-muted-foreground mb-1">
+                Analysis Type:
+              </label>
+              {isLoadingConfig ? (
+                <div className="w-full sm:w-auto px-3 py-2 border border-input rounded-md bg-muted text-muted-foreground">
+                  Loading options...
+                </div>
+              ) : (
+                <select
+                  id="prompt-type"
+                  value={promptType}
+                  onChange={(e) => setPromptType(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 border border-input rounded-md bg-background text-foreground"
+                  disabled={isAnalyzing}
                 >
-                  Save as Favorite
+                  {promptTypes.map(type => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="mt-2 sm:mt-0">
+              <Button
+                onClick={handleAnalyzeEntry}
+                isLoading={isAnalyzing}
+                disabled={isAnalyzing || isLoadingConfig}
+              >
+                Analyze Entry
+              </Button>
+            </div>
+          </div>
+
+          {isAnalyzing && (
+            <div className="mt-4">
+              <div className="w-full bg-secondary h-2 rounded-full">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-300 ease-in-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {progress < 30 ? 'Processing entry content...' :
+                 progress < 60 ? 'Analyzing themes and patterns...' :
+                 'Finalizing results...'}
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertDescription>
+                <p>{error}</p>
+                <Button
+                  className="mt-2"
+                  onClick={handleAnalyzeEntry}
+                  size="sm"
+                  variant="outline"
+                >
+                  Retry
                 </Button>
-              </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
-              <div className="prose dark:prose-invert prose-sm max-w-none">
-                <p className="mb-3"><strong>Summary:</strong> {currentSummary.summary}</p>
-
-                <div className="mb-3">
-                  <strong>Key Topics:</strong>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {currentSummary.key_topics.map((topic, index) => (
-                      <span
-                        key={index}
-                        className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs"
-                      >
-                        {topic}
-                      </span>
-                    ))}
-                  </div>
+          {currentSummary && !isAnalyzing && (
+            <Card className="mt-4 border-primary/20">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <CardTitle className="text-lg">Analysis Results</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveAsFavorite}
+                  >
+                    Save as Favorite
+                  </Button>
                 </div>
+              </CardHeader>
 
-                <p className="mb-1"><strong>Detected Mood:</strong> {currentSummary.mood}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Analysis type: {getSelectedPromptTypeName()}
-                </p>
-              </div>
+              <CardContent>
+                <div className="prose dark:prose-invert prose-sm max-w-none">
+                  <p className="mb-3"><strong>Summary:</strong> {currentSummary.summary}</p>
+
+                  <div className="mb-3">
+                    <strong>Key Topics:</strong>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {currentSummary.key_topics.map((topic, index) => (
+                        <Badge
+                          key={index}
+                          variant="secondary"
+                        >
+                          {topic}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="mb-1"><strong>Detected Mood:</strong> {currentSummary.mood}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Analysis type: {getSelectedPromptTypeName()}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Favorite Summaries Section */}
+        {showFavoriteSummaries && favoriteSummaries.length > 0 && (
+          <div className="mt-6 border-t border-border pt-4">
+            <h3 className="text-lg font-medium mb-3">
+              Saved Analyses
+            </h3>
+
+            <div className="space-y-4">
+              {favoriteSummaries.map((summary, index) => (
+                <Card key={index} className="bg-muted/50">
+                  <CardContent className="pt-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-medium">Saved Analysis</h4>
+                      <Badge variant="outline">
+                        {summary.prompt_type || 'Default'}
+                      </Badge>
+                    </div>
+
+                    <p className="text-sm mb-3">{summary.summary}</p>
+
+                    <div className="mb-2">
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {summary.key_topics.map((topic, topicIndex) => (
+                          <Badge
+                            key={topicIndex}
+                            variant="secondary"
+                            className="bg-secondary/50"
+                          >
+                            {topic}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-muted-foreground flex justify-between">
+                      <span>Mood: {summary.mood}</span>
+                      {summary.created_at && (
+                        <span>Saved on {new Date(summary.created_at).toLocaleDateString()}</span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         )}
-      </div>
-
-      {/* Favorite Summaries Section */}
-      {showFavoriteSummaries && favoriteSummaries.length > 0 && (
-        <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">
-            Saved Analyses
-          </h3>
-
-          <div className="space-y-4">
-            {favoriteSummaries.map((summary, index) => (
-              <div
-                key={index}
-                className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-4"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-medium">Saved Analysis</h4>
-                  <span className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-2 py-1 rounded">
-                    {summary.prompt_type || 'Default'}
-                  </span>
-                </div>
-
-                <p className="text-sm mb-3">{summary.summary}</p>
-
-                <div className="mb-2">
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {summary.key_topics.map((topic, topicIndex) => (
-                      <span
-                        key={topicIndex}
-                        className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded text-xs"
-                      >
-                        {topic}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="text-xs text-gray-500 dark:text-gray-400 flex justify-between">
-                  <span>Mood: {summary.mood}</span>
-                  {summary.created_at && (
-                    <span>Saved on {new Date(summary.created_at).toLocaleDateString()}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 };
 

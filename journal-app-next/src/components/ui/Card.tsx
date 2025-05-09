@@ -1,18 +1,23 @@
 import React from 'react';
+import { Card as ShadcnCard } from './card';
 
 interface CardProps {
   children: React.ReactNode;
   className?: string;
+  clickable?: boolean;
 }
 
-const Card: React.FC<CardProps> = ({ children, className = '' }) => {
-  // Update to use CSS theme variables instead of hardcoded Tailwind colors
-  const baseStyles = 'bg-card text-card-foreground rounded-lg shadow-sm p-6 border border-border';
+/**
+ * @deprecated Use the shadcn Card component from './card.tsx' instead
+ */
+const Card: React.FC<CardProps> = ({ children, className = '', clickable = false }) => {
+  // Create a combined className that includes hover effects if clickable
+  const combinedClassName = `${clickable ? 'cursor-pointer hover:shadow-md' : ''} p-6 ${className}`;
 
   return (
-    <div className={`${baseStyles} ${className}`}>
+    <ShadcnCard className={combinedClassName}>
       {children}
-    </div>
+    </ShadcnCard>
   );
 };
 

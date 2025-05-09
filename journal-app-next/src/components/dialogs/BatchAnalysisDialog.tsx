@@ -1,8 +1,21 @@
-import { Fragment, useState, useEffect } from 'react';
-import { Dialog, Transition, RadioGroup } from '@headlessui/react';
+import { useState, useEffect } from 'react';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction
+} from '@/components/ui/alert-dialog';
+import { RadioGroup } from '@headlessui/react';
 import { XMarkIcon, PencilSquareIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { batchAnalysisApi } from '@/lib/api';
 import type { BatchAnalysisRequest } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
 
 interface BatchAnalysisDialogProps {
   isOpen: boolean;
@@ -87,170 +100,129 @@ export default function BatchAnalysisDialog({
   };
 
   return (
-    <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-10" onClose={onClose}>
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-black bg-opacity-25" />
-        </Transition.Child>
-
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4 text-center">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-300"
-              enterFrom="opacity-0 scale-95"
-              enterTo="opacity-100 scale-100"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100 scale-100"
-              leaveTo="opacity-0 scale-95"
+    <AlertDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <div className="flex justify-between items-center">
+            <AlertDialogTitle>
+              Analyze {entryIds.length} {entryIds.length === 1 ? 'Entry' : 'Entries'}
+            </AlertDialogTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onClose}
             >
-              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 text-left align-middle shadow-xl transition-all">
-                <Dialog.Title
-                  as="h3"
-                  className="text-lg font-medium leading-6 text-gray-900 dark:text-white flex justify-between items-center"
-                >
-                  <span>Analyze {entryIds.length} {entryIds.length === 1 ? 'Entry' : 'Entries'}</span>
-                  <button
-                    type="button"
-                    className="text-gray-400 hover:text-gray-500"
-                    onClick={onClose}
-                  >
-                    <XMarkIcon className="h-6 w-6" aria-hidden="true" />
-                  </button>
-                </Dialog.Title>
+              <XMarkIcon className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+          <AlertDialogDescription>
+            Analyze multiple entries together to identify patterns, themes, and insights.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
-                <div className="mt-4">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Analyze multiple entries together to identify patterns, themes, and insights.
-                  </p>
-                </div>
+        {error && (
+          <Alert variant="destructive" className="mt-4">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-                {error && (
-                  <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded-md">
-                    <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
-                  </div>
-                )}
+        <div className="mt-6 space-y-6">
+          {/* Analysis Title */}
+          <div>
+            <label htmlFor="analysis-title" className="block text-sm font-medium text-muted-foreground">
+              Analysis Title
+            </label>
+            <div className="mt-1 relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <PencilSquareIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+              </div>
+              <Input
+                type="text"
+                id="analysis-title"
+                className="pl-10"
+                placeholder="Analysis Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+          </div>
 
-                <div className="mt-6 space-y-6">
-                  {/* Analysis Title */}
-                  <div>
-                    <label htmlFor="analysis-title" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Analysis Title
-                    </label>
-                    <div className="mt-1 relative rounded-md shadow-sm">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <PencilSquareIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-                      </div>
-                      <input
-                        type="text"
-                        id="analysis-title"
-                        className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
-                        placeholder="Analysis Title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        disabled={loading}
-                      />
-                    </div>
-                  </div>
+          {/* Analysis Type */}
+          <div>
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium text-foreground">Analysis Type</h4>
+            </div>
 
-                  {/* Analysis Type */}
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Analysis Type</h4>
-                    </div>
-
-                    <RadioGroup value={selectedPromptType} onChange={setSelectedPromptType} className="mt-2">
-                      <RadioGroup.Label className="sr-only">Choose an analysis type</RadioGroup.Label>
-                      <div className="space-y-2">
-                        {promptTypes.map((promptType) => (
-                          <RadioGroup.Option
-                            key={promptType.id}
-                            value={promptType.id}
-                            className={({ checked }) =>
-                              `${
-                                checked
-                                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                                  : 'border-gray-200 dark:border-gray-700'
-                              }
-                              relative flex cursor-pointer rounded-lg border p-4 focus:outline-none`
-                            }
-                            disabled={loading}
-                          >
-                            {({ active, checked }) => (
-                              <div className="flex w-full items-center justify-between">
-                                <div className="flex items-center">
-                                  <div className="text-sm">
-                                    <RadioGroup.Label
-                                      as="p"
-                                      className={`font-medium ${
-                                        checked ? 'text-blue-900 dark:text-blue-300' : 'text-gray-900 dark:text-white'
-                                      }`}
-                                    >
-                                      {promptType.name}
-                                    </RadioGroup.Label>
-                                    <RadioGroup.Description
-                                      as="span"
-                                      className={`inline ${
-                                        checked ? 'text-blue-700 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
-                                      }`}
-                                    >
-                                      <span>{promptType.description}</span>
-                                    </RadioGroup.Description>
-                                  </div>
-                                </div>
-                                <div className={`shrink-0 text-white ${checked ? 'text-blue-600' : 'invisible'}`}>
-                                  <DocumentTextIcon className="h-5 w-5" />
-                                </div>
-                              </div>
-                            )}
-                          </RadioGroup.Option>
-                        ))}
-                      </div>
-                    </RadioGroup>
-                  </div>
-                </div>
-
-                <div className="mt-8 flex justify-end">
-                  <button
-                    type="button"
-                    className="mr-2 inline-flex justify-center rounded-md border border-transparent bg-gray-200 dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
-                    onClick={onClose}
+            <RadioGroup value={selectedPromptType} onChange={setSelectedPromptType} className="mt-2">
+              <RadioGroup.Label className="sr-only">Choose an analysis type</RadioGroup.Label>
+              <div className="space-y-2">
+                {promptTypes.map((promptType) => (
+                  <RadioGroup.Option
+                    key={promptType.id}
+                    value={promptType.id}
+                    className={({ checked }) =>
+                      `${
+                        checked
+                          ? 'bg-primary/10 border-primary/20'
+                          : 'border-input bg-background'
+                      }
+                      relative flex cursor-pointer rounded-lg border p-4 focus:outline-none`
+                    }
                     disabled={loading}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:bg-blue-400 disabled:cursor-not-allowed"
-                    onClick={handleAnalyze}
-                    disabled={loading || !selectedPromptType}
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Processing...
-                      </>
-                    ) : (
-                      'Analyze Entries'
+                    {({ active, checked }) => (
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center">
+                          <div className="text-sm">
+                            <RadioGroup.Label
+                              as="p"
+                              className={`font-medium ${
+                                checked ? 'text-primary' : 'text-foreground'
+                              }`}
+                            >
+                              {promptType.name}
+                            </RadioGroup.Label>
+                            <RadioGroup.Description
+                              as="span"
+                              className={`inline ${
+                                checked ? 'text-primary/70' : 'text-muted-foreground'
+                              }`}
+                            >
+                              <span>{promptType.description}</span>
+                            </RadioGroup.Description>
+                          </div>
+                        </div>
+                        <div className={`shrink-0 text-primary ${checked ? '' : 'invisible'}`}>
+                          <DocumentTextIcon className="h-5 w-5" />
+                        </div>
+                      </div>
                     )}
-                  </button>
-                </div>
-              </Dialog.Panel>
-            </Transition.Child>
+                  </RadioGroup.Option>
+                ))}
+              </div>
+            </RadioGroup>
           </div>
         </div>
-      </Dialog>
-    </Transition>
+
+        <AlertDialogFooter className="mt-6">
+          <AlertDialogCancel asChild>
+            <Button variant="outline" disabled={loading} onClick={onClose}>
+              Cancel
+            </Button>
+          </AlertDialogCancel>
+          <AlertDialogAction asChild>
+            <Button
+              onClick={handleAnalyze}
+              disabled={loading || !selectedPromptType}
+              isLoading={loading}
+            >
+              Analyze Entries
+            </Button>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

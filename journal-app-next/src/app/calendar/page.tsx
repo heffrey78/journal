@@ -5,6 +5,8 @@ import MainLayout from '@/components/layout/MainLayout';
 import { organizationApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/api';
 import Link from 'next/link';
+import Container from '@/components/layout/Container';
+import ContentPadding from '@/components/layout/ContentPadding';
 
 // Calendar implementation using a grid layout
 export default function CalendarPage() {
@@ -167,52 +169,56 @@ export default function CalendarPage() {
 
   return (
     <MainLayout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar View</h1>
-      </div>
+      <Container maxWidth="4xl" className="mx-auto">
+        <ContentPadding size="md">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Calendar View</h1>
+          </div>
 
-      <div className="mb-6 flex justify-between items-center">
-        <button
-          onClick={prevMonth}
-          className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
-          </svg>
-        </button>
-        <h2 className="text-xl font-semibold">{monthYearDisplay(date)}</h2>
-        <button
-          onClick={nextMonth}
-          className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
-          </svg>
-        </button>
-      </div>
+          <div className="mb-6 flex justify-between items-center">
+            <button
+              onClick={prevMonth}
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
+              </svg>
+            </button>
+            <h2 className="text-xl font-semibold">{monthYearDisplay(date)}</h2>
+            <button
+              onClick={nextMonth}
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+              </svg>
+            </button>
+          </div>
 
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        </div>
-      ) : error ? (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4 my-4">
-          <p className="text-red-800 dark:text-red-300">{error}</p>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-7 gap-0">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="py-2 text-center border-b border-gray-200 dark:border-gray-700 font-medium">
-                {day}
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4 my-4">
+              <p className="text-red-800 dark:text-red-300">{error}</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 gap-0">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="py-2 text-center border-b border-gray-200 dark:border-gray-700 font-medium">
+                    {day}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-0">
-            {generateCalendar()}
-          </div>
-        </>
-      )}
+              <div className="grid grid-cols-7 gap-0">
+                {generateCalendar()}
+              </div>
+            </>
+          )}
+        </ContentPadding>
+      </Container>
     </MainLayout>
   );
 }

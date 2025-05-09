@@ -294,11 +294,12 @@ const EntryList: React.FC<EntryListProps> = ({
           <div key={entry.id} className="relative">
             {selectionMode && (
               <div
-                className={`absolute top-0 left-0 w-full h-full z-10 flex items-center justify-end pr-4 bg-black bg-opacity-0 ${
+                className={`absolute top-0 left-0 w-full h-full z-10 flex items-center justify-end pr-4 ${
                   selectedEntries.includes(entry.id)
                     ? 'border-2 border-primary rounded-lg'
                     : ''
                 }`}
+                style={{ backgroundColor: 'rgba(0,0,0,0)' }}
                 onClick={() => toggleEntrySelection(entry.id)}
               >
                 <div className={`absolute top-3 right-3 h-6 w-6 rounded-full ${
@@ -319,8 +320,9 @@ const EntryList: React.FC<EntryListProps> = ({
                 e.preventDefault();
                 toggleEntrySelection(entry.id);
               } : undefined}
+              className={selectionMode ? "pointer-events-none" : ""}
             >
-              <Card className={selectionMode ? "" : "hover:border-primary/50 transition-colors"}>
+              <Card className={`${selectionMode ? "pointer-events-none" : "hover:border-primary/50 transition-colors"}`}>
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start">
                     <h3 className="text-lg font-semibold">

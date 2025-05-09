@@ -17,7 +17,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-10 border-b border-border shadow-sm" style={{ backgroundColor: 'var(--header-background, var(--background))' }}>
+    <header className="sticky top-0 z-50 border-b border-border shadow-sm" style={{ backgroundColor: 'var(--header-background, var(--background))' }}>
       <Container as="div" className="py-4">
         <Cluster justify="between" align="center" gap="sm">
           <div className="flex items-center">

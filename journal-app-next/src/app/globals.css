@@ -25,9 +25,23 @@
 
   /* Status colors */
   --success: #10b981;
+  --success-foreground: #ffffff;
   --warning: #f59e0b;
+  --warning-foreground: #ffffff;
   --error: #ef4444;
+  --error-foreground: #ffffff;
   --info: #3b82f6;
+  --info-foreground: #ffffff;
+
+  /* Destructive actions (aligned with shadcn UI) */
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  /* Component-specific colors */
+  --ring: #3b82f6;
+
+  /* Radius */
+  --radius: 0.5rem;
 
   /* Typography */
   --font-size-base: 16px;
@@ -61,7 +75,12 @@
   --border: #374151;
   --input: #374151;
 
-  /* Status colors - dark mode remain the same for consistency */
+  /* Destructive actions (dark mode) */
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  /* Component-specific colors */
+  --ring: #3b82f6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -86,6 +105,17 @@
     --muted-foreground: #9ca3af;
     --border: #374151;
     --input: #374151;
+
+    /* Destructive actions (dark mode) */
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+  }
+}
+
+/* Custom theme tokens for Tailwind */
+@layer base {
+  :root {
+    --radius: 0.5rem;
   }
 }
 

@@ -72,12 +72,12 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
   return (
     <button
       onClick={handleToggle}
-      className={`p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors ${className}`}
+      className={`p-2 rounded-md hover:bg-accent transition-colors ${className}`}
       title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
       aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
     >
       {isDarkMode ? (
-        <MoonIcon className="h-6 w-6 text-gray-100" />
+        <MoonIcon className="h-6 w-6 text-foreground" />
       ) : (
         <SunIcon className="h-6 w-6 text-amber-500" />
       )}

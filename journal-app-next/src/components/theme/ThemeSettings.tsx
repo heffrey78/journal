@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTheme } from '../layout/ThemeProvider';
-import Button from '../ui/Button';
+import { Button } from '../ui/button';
 import ColorCustomizer from './ColorCustomizer';
 
 type ThemeSettingsProps = {
@@ -99,12 +99,12 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
   return (
     <div className="space-y-6">
       {/* Theme settings tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700">
+      <div className="flex border-b border-border">
         <button
           className={`px-4 py-2 font-medium text-sm ${
             activeTab === 'general'
-              ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              ? 'border-b-2 border-primary text-primary'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
           onClick={() => setActiveTab('general')}
         >
@@ -113,8 +113,8 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
         <button
           className={`px-4 py-2 font-medium text-sm ${
             activeTab === 'advanced'
-              ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              ? 'border-b-2 border-primary text-primary'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
           onClick={() => setActiveTab('advanced')}
         >
@@ -125,7 +125,7 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
       {activeTab === 'general' && (
         <>
           <div className="space-y-4">
-            <h3 className="font-medium text-gray-900 dark:text-gray-100">Color Theme</h3>
+            <h3 className="font-medium text-foreground">Color Theme</h3>
             <div className="grid grid-cols-3 gap-3">
               {colorThemes.map((colorTheme) => (
                 <div key={colorTheme.value} className="flex items-center">
@@ -142,8 +142,8 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
                     htmlFor={`theme-${colorTheme.value}`}
                     className={`flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-all ${
                       localSettings.colorTheme === colorTheme.value
-                        ? 'border-blue-600 bg-blue-50 text-blue-600 dark:border-blue-400 dark:bg-blue-900/20 dark:text-blue-400'
-                        : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700/70'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-input bg-background text-foreground hover:bg-accent/50'
                     }`}
                   >
                     {colorTheme.name}
@@ -154,18 +154,18 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
           </div>
 
           <div className="space-y-4">
-            <h3 className="font-medium text-gray-900 dark:text-gray-100">Typography</h3>
+            <h3 className="font-medium text-foreground">Typography</h3>
 
             <div className="space-y-3">
               <div>
-                <label htmlFor="font-family" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="font-family" className="block text-sm font-medium text-muted-foreground mb-1">
                   Font Family
                 </label>
                 <select
                   id="font-family"
                   value={localSettings.fontFamily}
                   onChange={handleFontFamilyChange}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   {fontFamilies.map((font) => (
                     <option key={font.value} value={font.value}>
@@ -176,11 +176,11 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
               </div>
 
               <div>
-                <label htmlFor="font-size" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="font-size" className="block text-sm font-medium text-muted-foreground mb-1">
                   Font Size: {localSettings.fontSize}px
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">12</span>
+                  <span className="text-xs text-muted-foreground">12</span>
                   <input
                     type="range"
                     id="font-size"
@@ -189,18 +189,18 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
                     step="1"
                     value={localSettings.fontSize}
                     onChange={handleFontSizeChange}
-                    className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none"
+                    className="flex-1 h-2 bg-muted rounded-full appearance-none"
                   />
-                  <span className="text-xs text-gray-500">24</span>
+                  <span className="text-xs text-muted-foreground">24</span>
                 </div>
               </div>
 
               <div>
-                <label htmlFor="line-height" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label htmlFor="line-height" className="block text-sm font-medium text-muted-foreground mb-1">
                   Line Height: {localSettings.lineHeight.toFixed(1)}
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">1.0</span>
+                  <span className="text-xs text-muted-foreground">1.0</span>
                   <input
                     type="range"
                     id="line-height"
@@ -209,16 +209,16 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
                     step="0.1"
                     value={localSettings.lineHeight}
                     onChange={handleLineHeightChange}
-                    className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none"
+                    className="flex-1 h-2 bg-muted rounded-full appearance-none"
                   />
-                  <span className="text-xs text-gray-500">2.5</span>
+                  <span className="text-xs text-muted-foreground">2.5</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="text-preview p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-            <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Preview</h4>
+          <div className="text-preview p-4 border border-border rounded-md">
+            <h4 className="font-medium text-foreground mb-2">Preview</h4>
             <p
               style={{
                 fontFamily:
@@ -230,7 +230,7 @@ export default function ThemeSettings({ onSave }: ThemeSettingsProps) {
                 fontSize: `${localSettings.fontSize}px`,
                 lineHeight: localSettings.lineHeight,
               }}
-              className="text-gray-700 dark:text-gray-300"
+              className="text-foreground"
             >
               The quick brown fox jumps over the lazy dog. This is a preview of how your text will look with the selected settings.
             </p>

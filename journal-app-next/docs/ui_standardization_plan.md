@@ -73,10 +73,12 @@ Based on the more modern approach used in BatchAnalysisResults, we recommend the
 - **Examples:**
   - Use `bg-primary` instead of `bg-blue-600`
   - Use `text-foreground` instead of `text-gray-900 dark:text-white`
+- **Documentation:** Refer to `src/lib/tokens.ts` for comprehensive token documentation
 
 ### 3. Dark Mode Implementation
 - **Standard:** Use shadcn UI's theme approach with CSS variables
 - **Avoid:** Directly using `dark:` classes with hardcoded colors
+- **Migration:** Follow the theme migration guide in `docs/theme_migration_guide.md`
 
 ### 4. Layout Patterns
 - **Standard:** Define consistent spacing and layout patterns
@@ -101,18 +103,35 @@ Based on the more modern approach used in BatchAnalysisResults, we recommend the
 4. ✅ Standardize Badge/Tag styling
    - Updated all components to use shadcn Badge component
 
-### Phase 2: Theme Token Migration
-1. Replace hardcoded colors with semantic class names
-2. Ensure dark mode consistency
-3. Update custom color implementation to use CSS variables
+### Phase 2: Theme Token Migration ✅
+1. ✅ Add missing theme tokens in `globals.css`
+   - Added status color foregrounds
+   - Added destructive action colors
+   - Added component-specific colors
+   - Ensured both light and dark modes have complete variable sets
+
+2. ✅ Create comprehensive token documentation
+   - Added `tokens.ts` utility file for programmatic access to token groups
+   - Created developer migration guide in `docs/theme_migration_guide.md`
+
+3. ✅ Update Tailwind configuration
+   - Enhanced integration with radius tokens
+   - Added animation keyframes for UI components
+
+4. ✅ Refactor key components to use theme tokens
+   - Updated `Header.tsx` to use semantic class names
+   - Updated `ThemeSettings.tsx` to use theme tokens
+   - Updated `ColorCustomizer.tsx` to use shadcn Button and semantic colors
+   - Updated `MoveEntriesDialog.tsx` from Headless UI to theme tokens
 
 ### Phase 3: Layout Standardization
 1. Normalize spacing and layout patterns
 2. Create reusable layout components for common patterns
 
 ### Phase 4: Documentation
-1. Create a component style guide
-2. Document theme customization approach
+1. ✅ Create a theme token reference guide
+2. Document component usage patterns
+3. Create interactive examples
 
 ## Components Refactored
 
@@ -133,14 +152,34 @@ The following components have been successfully refactored to use the standardiz
    - Standardized button variant usage
    - Badge component for tags and folders
 
+4. ✅ **Header.tsx**
+   - Migrated from hardcoded colors to semantic theme tokens
+   - Properly handles light and dark mode without explicit `dark:` classes
+
+5. ✅ **ThemeToggle.tsx**
+   - Updated to use theme tokens for hover states and text colors
+
+6. ✅ **MoveEntriesDialog.tsx**
+   - Updated to use theme tokens for colors
+   - Component structure consistent with other dialogs
+
+7. ✅ **ThemeSettings.tsx**
+   - Updated to use semantic class names instead of hardcoded colors
+   - Consistent with shadcn UI styling patterns
+
+8. ✅ **ColorCustomizer.tsx**
+   - Updated to use shadcn Button component
+   - Uses semantic color classes
+
 ## Components Remaining to Refactor
 
-1. MoveEntriesDialog.tsx - Update to use shadcn AlertDialog
-2. Additional components with custom styling
+1. Additional sidebar and navigation components
+2. Form components
+3. Search and filter components
 
 ## Next Steps
 
-1. Continue with Phase 2: Theme Token Migration
-2. Create a standardized component library with examples
-3. Begin migration of remaining components
-4. Test for visual consistency across light/dark modes and with custom colors
+1. ✅ Complete Phase 2: Theme Token Migration
+2. Begin Phase 3: Layout Standardization
+3. Update remaining components to use theme tokens
+4. Implement component test suite to verify theme compatibility

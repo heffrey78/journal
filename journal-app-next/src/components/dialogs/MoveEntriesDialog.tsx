@@ -92,7 +92,7 @@ export default function MoveEntriesDialog({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black bg-opacity-25" />
+          <div className="fixed inset-0 bg-black/25" />
         </Transition.Child>
 
         <div className="fixed inset-0 overflow-y-auto">
@@ -106,15 +106,15 @@ export default function MoveEntriesDialog({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 text-left align-middle shadow-xl transition-all">
+              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-lg bg-card p-6 text-left align-middle shadow-xl transition-all">
                 <Dialog.Title
                   as="h3"
-                  className="text-lg font-medium leading-6 text-gray-900 dark:text-white flex justify-between items-center"
+                  className="text-lg font-medium leading-6 text-card-foreground flex justify-between items-center"
                 >
                   <span>Move {entryCount} {entryCount === 1 ? 'Entry' : 'Entries'}</span>
                   <button
                     type="button"
-                    className="text-gray-400 hover:text-gray-500"
+                    className="text-muted-foreground hover:text-foreground"
                     onClick={onClose}
                   >
                     <XMarkIcon className="h-6 w-6" aria-hidden="true" />
@@ -122,24 +122,24 @@ export default function MoveEntriesDialog({
                 </Dialog.Title>
 
                 <div className="mt-4">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     Choose a destination folder for your {entryCount === 1 ? 'entry' : 'entries'}.
                   </p>
                 </div>
 
                 {error && (
-                  <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded-md">
-                    <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
+                  <div className="mt-4 bg-destructive/10 border border-destructive/30 p-3 rounded-md">
+                    <p className="text-sm text-destructive">{error}</p>
                   </div>
                 )}
 
                 <div className="mt-4 max-h-60 overflow-y-auto">
                   {loading ? (
                     <div className="flex justify-center py-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                     </div>
                   ) : folders.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+                    <p className="text-sm text-muted-foreground py-4 text-center">
                       No other folders available.
                     </p>
                   ) : (
@@ -148,14 +148,14 @@ export default function MoveEntriesDialog({
                         <div
                           key={folder}
                           onClick={() => setSelectedFolder(folder)}
-                          className={`flex items-center p-3 rounded-lg cursor-pointer ${
+                          className={`flex items-center p-3 rounded-md cursor-pointer ${
                             selectedFolder === folder
-                              ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-                              : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                              ? 'bg-primary/10 border border-primary/20'
+                              : 'hover:bg-accent/50'
                           }`}
                         >
-                          <FolderIcon className="h-5 w-5 text-gray-400 mr-2" />
-                          <span className="text-gray-900 dark:text-white">{folder}</span>
+                          <FolderIcon className="h-5 w-5 text-muted-foreground mr-2" />
+                          <span className="text-card-foreground">{folder}</span>
                         </div>
                       ))}
                     </div>
@@ -165,24 +165,24 @@ export default function MoveEntriesDialog({
                 <div className="mt-6 flex flex-col space-y-3 sm:flex-row sm:justify-between sm:space-y-0 sm:space-x-4">
                   <button
                     type="button"
-                    className="inline-flex justify-center items-center px-4 py-2 text-sm font-medium text-red-700 bg-red-100 dark:bg-red-900/20 dark:text-red-300 border border-transparent rounded-md hover:bg-red-200 dark:hover:bg-red-800/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
+                    className="inline-flex justify-center items-center px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive/90 border border-transparent rounded-md hover:bg-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-destructive"
                     onClick={handleRemoveFromFolder}
                     disabled={processing || !currentFolder}
                   >
                     {processing ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-destructive-foreground mr-2"></div>
                     ) : null}
                     Remove from Folder
                   </button>
 
                   <button
                     type="button"
-                    className="inline-flex justify-center items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+                    className="inline-flex justify-center items-center px-4 py-2 text-sm font-medium text-primary-foreground bg-primary border border-transparent rounded-md hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
                     onClick={handleMove}
                     disabled={processing || !selectedFolder}
                   >
                     {processing ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground mr-2"></div>
                     ) : null}
                     Move
                   </button>

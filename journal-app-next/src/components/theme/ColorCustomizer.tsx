@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Button from '../ui/Button';
+import { Button } from '../ui/button';
 
 interface ColorSetting {
   name: string;
@@ -109,17 +109,17 @@ export default function ColorCustomizer({ onApply, className = '' }: ColorCustom
 
   return (
     <div className={`space-y-4 ${className}`}>
-      <h3 className="font-medium text-gray-900 dark:text-gray-100">Custom Colors</h3>
+      <h3 className="font-medium text-foreground">Custom Colors</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {colorSettings.map((color, index) => (
           <div key={color.name} className="space-y-1">
             <div className="flex justify-between items-center">
-              <label htmlFor={`color-${color.name}`} className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label htmlFor={`color-${color.name}`} className="text-sm font-medium text-muted-foreground">
                 {color.label}
               </label>
               <div
-                className="h-6 w-6 rounded border border-gray-300 dark:border-gray-600"
+                className="h-6 w-6 rounded border border-border"
                 style={{ backgroundColor: color.value }}
               />
             </div>
@@ -143,7 +143,7 @@ export default function ColorCustomizer({ onApply, className = '' }: ColorCustom
         </Button>
       </div>
 
-      <div className="bg-muted dark:bg-muted rounded-md p-4 mt-4 border border-border">
+      <div className="bg-muted rounded-md p-4 mt-4 border border-border">
         <h4 className="font-medium text-foreground text-sm mb-2">Preview</h4>
         <div className="space-y-2">
           <div className="h-8 rounded bg-primary"></div>

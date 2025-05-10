@@ -24,6 +24,7 @@ from app.models import JournalEntry, LLMConfig, BatchAnalysisRequest, BatchAnaly
 from app.storage import StorageManager
 from app.llm_service import LLMService, EntrySummary, BatchAnalysisError
 from app.organization_routes import organization_router
+from app.chat_routes import chat_router
 from app.utils import get_storage, get_llm_service
 
 # Import from utils module# Configure logging
@@ -39,6 +40,9 @@ app = FastAPI(
 
 # Include the organization router
 app.include_router(organization_router)
+
+# Include the chat router
+app.include_router(chat_router)
 
 # Add CORS middleware
 app.add_middleware(

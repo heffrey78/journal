@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+import uuid
 
 
 class JournalEntry(BaseModel):
@@ -247,7 +248,8 @@ class ChatSession(BaseModel):
     """
 
     id: str = Field(
-        default_factory=lambda: f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        default_factory=lambda: f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}-"
+        f"{uuid.uuid4().hex[:8]}"
     )
     title: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.now)
@@ -351,36 +353,19 @@ class EntryReference(BaseModel):
 
 
 class ChatConfig(BaseModel):
-    """
-    Configuration settings for the chat feature.
-
-    Attributes:
-        id: Unique identifier (always "default" for single-user setup)
-        system_prompt: System prompt for chat completions
-        max_context_tokens: Maximum tokens to include in context window
-        temperature: Controls randomness in generation (0-1)
-        retrieval_limit: Maximum number of entries to retrieve for context
-        chunk_size: Size of chunks for entry splitting
-        conversation_summary_threshold: Token threshold for summarizing conversation
-    """
+    """Configuration for chat functionality."""
 
     id: str = "default"
-    system_prompt: str = "You are a helpful assistant that helps users explore their "
-    "journal entries. Always cite specific entries when making claims about the "
-    "user's experiences."
-    max_context_tokens: int = 4096
+    system_prompt: str = "You are an AI assistant for a personal journaling app. "
+    "Help the user explore their journal entries and answer questions about "
+    "their content. When referencing journal entries, use the entry IDs provided."
     temperature: float = 0.7
-    retrieval_limit: int = 10
-    chunk_size: int = 500
-    conversation_summary_threshold: int = 2000
-
-    temporal_prompts: Dict[str, str] = {
-        "recent": "focusing on the user's most recent journal entries "
-        "from the past week",
-        "last_week": "looking at entries from last week",
-        "last_month": "reviewing entries from the past month",
-        "specific_date": "examining entries from {date}",
-    }
+    max_history: int = 10
+    retrieval_limit: int = 5  # Maximum number of entries to retrieve
+    chunk_size: int = 500  # Maximum characters per chunk for text chunking
+    chunk_overlap: int = 100  # Character overlap between chunks
+    use_enhanced_retrieval: bool = True  # Whether to use enhanced retrieval
+    max_tokens: int = 2048  # Maximum tokens in response
 
     class Config:
         """Pydantic config options"""

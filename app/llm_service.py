@@ -6,9 +6,7 @@ embedding generation and structured outputs.
 """
 
 import ollama
-import numpy as np
 import logging
-import time
 import json
 from typing import List, Dict, Any, Optional, Callable
 from pydantic import BaseModel
@@ -172,51 +170,31 @@ class LLMService:
             logger.error(error_msg)
             raise OllamaConnectionError(error_msg)
 
-    def get_embedding(self, text: str) -> np.ndarray:
+    def get_embedding(self, text: str) -> List[float]:
         """
-        Generate embedding vector for text using Ollama.
+        Generate an embedding vector for the given text using Ollama.
 
         Args:
-            text: The text to generate an embedding for
+            text: Text to generate embedding for
 
         Returns:
-            Numpy array containing the embedding vector
+            Embedding vector as a list of floats
 
         Raises:
-            EmbeddingGenerationError: If embedding generation fails after retries
+            LLMServiceError: If generating the embedding fails
         """
-        attempts = 0
-        last_exception = None
+        try:
+            # Call Ollama's embeddings endpoint
+            response = ollama.embeddings(model=self.model_name, prompt=text)
 
-        while attempts <= self.max_retries:
-            try:
-                response = ollama.embeddings(model=self.embedding_model, prompt=text)
-                return np.array(response["embedding"], dtype=np.float32)
-            except Exception as e:
-                last_exception = e
-                attempts += 1
-                if attempts <= self.max_retries:
-                    logger.warning(
-                        f"Embedding generation attempt "
-                        f"{attempts} failed: {e}. Retrying..."
-                    )
-                    time.sleep(self.retry_delay)
-                else:
-                    break
+            if "embedding" in response:
+                return response["embedding"]
+            else:
+                raise LLMServiceError("Invalid response from Ollama embeddings API")
 
-        # Log the error and return a fallback
-        logger.error(
-            f"Failed to generate embedding after "
-            f"{self.max_retries + 1} attempts: {last_exception}"
-        )
-
-        # For production use, we might want to raise an exception instead
-
-        # Return zero vector as fallback
-        logger.warning("Returning zero vector as fallback for embedding")
-        return np.zeros(
-            768, dtype=np.float32
-        )  # Use consistent size for nomic-embed-text model
+        except Exception as e:
+            logger.error(f"Embedding generation failed: {e}")
+            raise LLMServiceError(f"Failed to generate embedding: {e}")
 
     def process_entries_without_embeddings(
         self,
@@ -865,6 +843,7 @@ class LLMService:
         min_similarity: Optional[
             float
         ] = None,  # Allow overriding the default threshold
+        date_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Perform semantic search on journal entries with pagination support.
@@ -883,6 +862,7 @@ class LLMService:
             batch_size: Size of batches for processing vectors
             min_similarity: Optional minimum similarity threshold (0-1).
                            If None, uses the configured default value.
+            date_filter: Optional date filter with date_from and date_to fields
 
         Returns:
             List of search results filtered by relevance
@@ -909,12 +889,50 @@ class LLMService:
         # HYBRID APPROACH: Combine vector search with text search
 
         # 1. Get semantic search results
-        semantic_results = self.storage_manager.semantic_search(
-            query_embedding,
-            limit=limit * 2,  # Get more results to account for filtering
-            offset=offset,
-            batch_size=batch_size,
-        )
+        try:
+            semantic_results = self.storage_manager.semantic_search(
+                query_embedding,
+                limit=limit * 2,  # Get more results to account for filtering
+                offset=offset,
+                batch_size=batch_size,
+                date_filter=date_filter,
+            )
+        except TypeError:
+            logger.info("Date filter not supported, falling back to basic search")
+            semantic_results = self.storage_manager.semantic_search(
+                query_embedding,
+                limit=limit * 2,
+                offset=offset,
+                batch_size=batch_size,
+            )
+
+            # Apply date filter manually if needed
+            if date_filter:
+                filtered_results = []
+                date_from = date_filter.get("date_from")
+                date_to = date_filter.get("date_to")
+
+                for result in semantic_results:
+                    if "entry" in result:
+                        entry = result["entry"]
+                        # Skip if the entry doesn't have a created_at date
+                        if not hasattr(entry, "created_at"):
+                            continue
+
+                        # Apply date filter
+                        entry_date = entry.created_at
+                        passes_filter = True
+
+                        if date_from and entry_date < date_from:
+                            passes_filter = False
+
+                        if date_to and entry_date > date_to:
+                            passes_filter = False
+
+                        if passes_filter:
+                            filtered_results.append(result)
+
+                semantic_results = filtered_results
 
         # Track entry IDs to avoid duplicates
         found_entry_ids = set()
@@ -933,9 +951,16 @@ class LLMService:
                 if len(term) < 3:
                     continue  # Skip very short terms
 
+                # Add date filter to text search if available
+                date_args = {}
+                if date_filter:
+                    date_args["date_from"] = date_filter.get("date_from")
+                    date_args["date_to"] = date_filter.get("date_to")
+
                 text_results = self.storage_manager.text_search(
                     query=term,
                     limit=limit,  # Reasonable limit for each term
+                    **date_args,  # Include date filter in text search
                 )
 
                 # Add unique entries not already found by semantic search
@@ -1009,3 +1034,40 @@ class LLMService:
             # On failure, log and return original query
             logger.warning(f"Failed to expand query using LLM: {e}")
             return query
+
+    def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = None,
+        max_tokens: int = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a chat completion response using Ollama.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            temperature: Optional temperature parameter (0-1) to control randomness
+            max_tokens: Optional maximum tokens to generate
+
+        Returns:
+            Dictionary containing the response
+
+        Raises:
+            LLMServiceError: If the chat completion fails
+        """
+        try:
+            # Use provided parameters or fall back to class defaults
+            temp = temperature if temperature is not None else self.temperature
+            tokens = max_tokens if max_tokens is not None else self.max_tokens
+
+            # Call Ollama for chat completion
+            response = ollama.chat(
+                model=self.model_name,
+                messages=messages,
+                options={"temperature": temp, "num_predict": tokens},
+            )
+
+            return response
+        except Exception as e:
+            logger.error(f"Chat completion failed: {e}")
+            raise LLMServiceError(f"Failed to generate chat completion: {e}")

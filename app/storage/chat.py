@@ -1,9 +1,13 @@
 import json
+import logging
 from datetime import datetime
 from typing import List, Dict, Optional
 
 from app.models import ChatSession, ChatMessage, ChatConfig, EntryReference
 from app.storage.base import BaseStorage
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class ChatStorage(BaseStorage):
@@ -325,54 +329,105 @@ class ChatStorage(BaseStorage):
 
     def add_message_entry_references(
         self, message_id: str, references: List[EntryReference]
-    ) -> None:
+    ) -> bool:
         """
-        Add entry references for a message.
+        Add entry references for a specific message.
 
         Args:
             message_id: The message ID
-            references: List of EntryReference objects
+            references: List of entry references
+
+        Returns:
+            True if successful
         """
         if not references:
-            return
+            return True
 
         conn = self.get_db_connection()
         cursor = conn.cursor()
 
         try:
-            for ref in references:
-                cursor.execute(
-                    """
-                    INSERT INTO chat_message_entries (
-                        message_id, entry_id, similarity_score, chunk_index
-                    ) VALUES (?, ?, ?, ?)
-                    """,
-                    (message_id, ref.entry_id, ref.similarity_score, ref.chunk_index),
-                )
-
-            # Update the entry_count in the session
+            # Ensure the table exists
             cursor.execute(
                 """
-                UPDATE chat_sessions
-                SET entry_count = (
-                    SELECT COUNT(DISTINCT entry_id)
-                    FROM chat_message_entries
-                    WHERE message_id IN (
-                        SELECT id FROM chat_messages WHERE session_id = (
-                            SELECT session_id FROM chat_messages WHERE id = ?
-                        )
-                    )
+                CREATE TABLE IF NOT EXISTS chat_message_entries (
+                    message_id TEXT NOT NULL,
+                    entry_id TEXT NOT NULL,
+                    similarity_score REAL NOT NULL,
+                    chunk_index INTEGER,
+                    PRIMARY KEY (message_id, entry_id, chunk_index)
                 )
-                WHERE id = (SELECT session_id FROM chat_messages WHERE id = ?)
-                """,
-                (message_id, message_id),
+                """
             )
 
+            # Insert references with chunk index info
+            for reference in references:
+                chunk_index = (
+                    reference.chunk_index if reference.chunk_index is not None else 0
+                )
+
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO chat_message_entries
+                    (message_id, entry_id, similarity_score, chunk_index)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        reference.message_id,
+                        reference.entry_id,
+                        reference.similarity_score,
+                        chunk_index,
+                    ),
+                )
+
+            # Update entry_count for the session
+            # Get the session_id from the message first
+            cursor.execute(
+                """
+                SELECT session_id FROM chat_messages
+                WHERE id = ?
+                """,
+                (message_id,),
+            )
+            result = cursor.fetchone()
+
+            if result:
+                session_id = result[0]
+
+                # Count unique entries referenced in this session
+                cursor.execute(
+                    """
+                    SELECT COUNT(DISTINCT e.entry_id)
+                    FROM chat_message_entries e
+                    JOIN chat_messages m ON e.message_id = m.id
+                    WHERE m.session_id = ?
+                    """,
+                    (session_id,),
+                )
+
+                entry_count = cursor.fetchone()[0]
+
+                # Update the session's entry_count
+                cursor.execute(
+                    """
+                    UPDATE chat_sessions
+                    SET entry_count = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        entry_count,
+                        session_id,
+                    ),
+                )
+
             conn.commit()
+            return True
 
         except Exception as e:
+            logger.error(f"Failed to add message entry references: {str(e)}")
             conn.rollback()
-            raise e
+            return False
+
         finally:
             conn.close()
 
@@ -392,30 +447,94 @@ class ChatStorage(BaseStorage):
         try:
             cursor.execute(
                 """
-                SELECT cme.entry_id, cme.similarity_score, cme.chunk_index,
-                       e.title, substr(e.content, 1, 100) as snippet
-                FROM chat_message_entries cme
-                JOIN entries e ON cme.entry_id = e.id
-                WHERE cme.message_id = ?
-                ORDER BY cme.similarity_score DESC
+                SELECT COUNT(*) FROM chat_message_entries
+                WHERE message_id = ?
                 """,
                 (message_id,),
             )
 
-            references = []
-            for row in cursor.fetchall():
-                references.append(
-                    EntryReference(
-                        message_id=message_id,
-                        entry_id=row[0],
-                        similarity_score=row[1],
-                        chunk_index=row[2],
-                        entry_title=row[3],
-                        entry_snippet=row[4],
-                    )
+            if cursor.fetchone()[0] == 0:
+                # No references for this message
+                return []
+
+            # Try a query that joins with the entries table to get title and content
+            try:
+                cursor.execute(
+                    """
+                    SELECT cme.entry_id, cme.similarity_score, cme.chunk_index,
+                           e.title, substr(e.content, 1, 200) as snippet
+                    FROM chat_message_entries cme
+                    JOIN entries e ON cme.entry_id = e.id
+                    WHERE cme.message_id = ?
+                    ORDER BY cme.similarity_score DESC
+                    """,
+                    (message_id,),
                 )
 
-            return references
+                references = []
+                for row in cursor.fetchall():
+                    references.append(
+                        EntryReference(
+                            message_id=message_id,
+                            entry_id=row[0],
+                            similarity_score=row[1],
+                            chunk_index=row[2],
+                            entry_title=row[3],
+                            entry_snippet=row[4],
+                        )
+                    )
+
+                return references
+
+            except Exception:
+                # Fallback if the join query fails
+                cursor.execute(
+                    """
+                    SELECT entry_id, similarity_score, chunk_index
+                    FROM chat_message_entries
+                    WHERE message_id = ?
+                    ORDER BY similarity_score DESC
+                    """,
+                    (message_id,),
+                )
+
+                references = []
+                for row in cursor.fetchall():
+                    references.append(
+                        EntryReference(
+                            message_id=message_id,
+                            entry_id=row[0],
+                            similarity_score=row[1],
+                            chunk_index=row[2],
+                        )
+                    )
+
+                # Now try to get additional info from entries table if it exists
+                try:
+                    # Only proceed if we have references to enrich
+                    if references:
+                        for ref in references:
+                            cursor.execute(
+                                """
+                                SELECT title, substr(content, 1, 200) as snippet
+                                FROM entries
+                                WHERE id = ?
+                                """,
+                                (ref.entry_id,),
+                            )
+                            row = cursor.fetchone()
+                            if row:
+                                ref.entry_title = row[0]
+                                ref.entry_snippet = row[1]
+                except Exception:
+                    # If this fails, it's OK - we just won't have title/snippet info
+                    pass
+
+                return references
+
+        except Exception as e:
+            logger.error(f"Failed to get message entry references: {str(e)}")
+            return []
 
         finally:
             conn.close()
@@ -482,29 +601,65 @@ class ChatStorage(BaseStorage):
         cursor = conn.cursor()
 
         try:
-            cursor.execute(
-                """
-                SELECT system_prompt, max_context_tokens, temperature,
-                       retrieval_limit, chunk_size, conversation_summary_threshold
-                FROM chat_config
-                WHERE id = 'default'
-                """
-            )
+            # Check if the table exists and has the current schema
+            cursor.execute("PRAGMA table_info(chat_config)")
+            columns = [column[1] for column in cursor.fetchall()]
 
-            row = cursor.fetchone()
-            if not row:
-                # Return default config if none exists in the database
+            if not columns:
+                # Table doesn't exist, return default config
                 return ChatConfig()
 
-            return ChatConfig(
-                system_prompt=row[0],
-                max_context_tokens=row[1],
-                temperature=row[2],
-                retrieval_limit=row[3],
-                chunk_size=row[4],
-                conversation_summary_threshold=row[5],
-            )
+            # Create query based on existing columns
+            query = "SELECT "
+            fields = []
 
+            if "system_prompt" in columns:
+                fields.append("system_prompt")
+            if "max_tokens" in columns:
+                fields.append("max_tokens")
+            elif "max_context_tokens" in columns:  # Handle legacy column name
+                fields.append("max_context_tokens as max_tokens")
+            if "temperature" in columns:
+                fields.append("temperature")
+            if "retrieval_limit" in columns:
+                fields.append("retrieval_limit")
+            if "chunk_size" in columns:
+                fields.append("chunk_size")
+            if "chunk_overlap" in columns:
+                fields.append("chunk_overlap")
+            if "use_enhanced_retrieval" in columns:
+                fields.append("use_enhanced_retrieval")
+
+            if not fields:
+                # No recognized columns, return default config
+                return ChatConfig()
+
+            query += ", ".join(fields)
+            query += " FROM chat_config WHERE id = 'default'"
+
+            cursor.execute(query)
+            row = cursor.fetchone()
+
+            if not row:
+                # No config found, return default
+                return ChatConfig()
+
+            # Create a dict to hold the config values
+            config_data = {"id": "default"}
+
+            # Add values from the database
+            for i, field in enumerate(fields):
+                # Extract the actual field name if it was aliased
+                field_name = field.split(" as ")[-1]
+                config_data[field_name] = row[i]
+
+            # Create ChatConfig from the data
+            return ChatConfig(**config_data)
+
+        except Exception as e:
+            logger.error(f"Error getting chat config: {str(e)}")
+            # Return default config on error
+            return ChatConfig()
         finally:
             conn.close()
 
@@ -519,47 +674,168 @@ class ChatStorage(BaseStorage):
         cursor = conn.cursor()
 
         try:
-            cursor.execute(
-                """
-                UPDATE chat_config
-                SET system_prompt = ?, max_context_tokens = ?,
-                    temperature = ?, retrieval_limit = ?,
-                    chunk_size = ?, conversation_summary_threshold = ?
-                WHERE id = 'default'
-                """,
-                (
-                    config.system_prompt,
-                    config.max_context_tokens,
-                    config.temperature,
-                    config.retrieval_limit,
-                    config.chunk_size,
-                    config.conversation_summary_threshold,
-                ),
-            )
+            # Check if the table exists
+            cursor.execute("PRAGMA table_info(chat_config)")
+            columns = [column[1] for column in cursor.fetchall()]
 
-            if cursor.rowcount == 0:
-                # Insert if update didn't affect any rows
+            if not columns:
+                # Create the table with the current schema
                 cursor.execute(
                     """
-                    INSERT INTO chat_config (
-                        id, system_prompt, max_context_tokens, temperature,
-                        retrieval_limit, chunk_size, conversation_summary_threshold
-                    ) VALUES ('default', ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
+                CREATE TABLE chat_config (
+                    id TEXT PRIMARY KEY,
+                    system_prompt TEXT,
+                    temperature REAL,
+                    max_tokens INTEGER,
+                    retrieval_limit INTEGER,
+                    chunk_size INTEGER,
+                    chunk_overlap INTEGER,
+                    max_history INTEGER,
+                    use_enhanced_retrieval BOOLEAN
+                )
+                """
+                )
+            else:
+                # Add any missing columns that exist in the current model
+                if "system_prompt" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config ADD COLUMN system_prompt TEXT"
+                    )
+
+                if "max_tokens" not in columns:
+                    # Handle migration from old schema
+                    if "max_context_tokens" in columns:
+                        cursor.execute(
+                            "ALTER TABLE chat_config ADD COLUMN max_tokens INTEGER"
+                        )
+                        cursor.execute(
+                            "UPDATE chat_config SET max_tokens = max_context_tokens"
+                        )
+                    else:
+                        cursor.execute(
+                            "ALTER TABLE chat_config ADD COLUMN max_tokens INTEGER"
+                        )
+
+                if "temperature" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config ADD COLUMN temperature REAL"
+                    )
+
+                if "retrieval_limit" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config ADD COLUMN retrieval_limit INTEGER"
+                    )
+
+                if "chunk_size" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config ADD COLUMN chunk_size INTEGER"
+                    )
+
+                if "chunk_overlap" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config ADD COLUMN chunk_overlap INTEGER"
+                    )
+
+                if "max_history" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config ADD COLUMN max_history INTEGER"
+                    )
+
+                if "use_enhanced_retrieval" not in columns:
+                    cursor.execute(
+                        "ALTER TABLE chat_config "
+                        "ADD COLUMN use_enhanced_retrieval BOOLEAN"
+                    )
+
+            # Construct update fields and parameters based on existing columns
+            update_fields = []
+            params = []
+
+            # Always include these core fields
+            update_fields.append("system_prompt = ?")
+            params.append(config.system_prompt)
+
+            update_fields.append("temperature = ?")
+            params.append(config.temperature)
+
+            update_fields.append("max_tokens = ?")
+            params.append(config.max_tokens)
+
+            update_fields.append("retrieval_limit = ?")
+            params.append(config.retrieval_limit)
+
+            update_fields.append("chunk_size = ?")
+            params.append(config.chunk_size)
+
+            update_fields.append("chunk_overlap = ?")
+            params.append(config.chunk_overlap)
+
+            update_fields.append("max_history = ?")
+            params.append(config.max_history)
+
+            update_fields.append("use_enhanced_retrieval = ?")
+            params.append(config.use_enhanced_retrieval)
+
+            # Add legacy field if it exists
+            if "conversation_summary_threshold" in columns:
+                update_fields.append("conversation_summary_threshold = ?")
+                params.append(0)  # Default value
+
+            # Construct the update query
+            update_query = (
+                "UPDATE chat_config SET "
+                + ", ".join(update_fields)
+                + " WHERE id = 'default'"
+            )
+
+            cursor.execute(update_query, tuple(params))
+
+            # Insert if update didn't affect any rows
+            if cursor.rowcount == 0:
+                insert_fields = ["id"]
+                insert_values = ["default"]
+
+                # Add all fields for insert
+                for field, value in zip(
+                    [
+                        "system_prompt",
+                        "temperature",
+                        "max_tokens",
+                        "retrieval_limit",
+                        "chunk_size",
+                        "chunk_overlap",
+                        "max_history",
+                        "use_enhanced_retrieval",
+                    ],
+                    [
                         config.system_prompt,
-                        config.max_context_tokens,
                         config.temperature,
+                        config.max_tokens,
                         config.retrieval_limit,
                         config.chunk_size,
-                        config.conversation_summary_threshold,
-                    ),
-                )
+                        config.chunk_overlap,
+                        config.max_history,
+                        config.use_enhanced_retrieval,
+                    ],
+                ):
+                    insert_fields.append(field)
+                    insert_values.append(value)
+
+                # Add legacy field if it exists
+                if "conversation_summary_threshold" in columns:
+                    insert_fields.append("conversation_summary_threshold")
+                    insert_values.append(0)
+
+                placeholders = ", ".join(["?" for _ in insert_fields])
+                insert_query = f"INSERT INTO chat_config ({', '.join(insert_fields)}) "
+                f"VALUES ({placeholders})"
+                cursor.execute(insert_query, tuple(insert_values))
 
             conn.commit()
 
         except Exception as e:
             conn.rollback()
+            logger.error(f"Failed to update chat config: {str(e)}")
             raise e
         finally:
             conn.close()

@@ -70,7 +70,7 @@ Let me start by analyzing the current plan to understand what we're working with
 ### Phase 4: Frontend & Integration
 
 12. **Basic Chat UI**
-    - Create simple chat interface
+    - Create chat interface
     - Implement message rendering
     - Verifiable: Can send/receive messages via UI
 

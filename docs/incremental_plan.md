@@ -2,7 +2,7 @@
 
 ## Phase 1: Project Setup & Core Functionality
 
-### Commit 1: Initial Project Structure
+### Commit 1: Initial Project Structure - DONE
 ```
 git commit -m "Initial project setup with directory structure and requirements"
 ```
@@ -11,7 +11,7 @@ git commit -m "Initial project setup with directory structure and requirements"
 - Add requirements.txt with basic dependencies (fastapi, pydantic, uvicorn)
 - Create README.md with project overview
 
-### Commit 2: Data Models Implementation
+### Commit 2: Data Models Implementation - DONE
 ```
 git commit -m "Implement core data models for journal entries"
 ```
@@ -19,7 +19,7 @@ git commit -m "Implement core data models for journal entries"
 - Add basic validation and test script
 - Verify model functionality with simple tests
 
-### Commit 3: Basic Storage Implementation (No Vector DB Yet)
+### Commit 3: Basic Storage Implementation (No Vector DB Yet) - DONE
 ```
 git commit -m "Implement basic storage functionality for markdown files and SQLite"
 ```
@@ -30,7 +30,7 @@ git commit -m "Implement basic storage functionality for markdown files and SQLi
 
 ## Phase 2: Backend API Development
 
-### Commit 4: FastAPI Backend - Base Endpoints
+### Commit 4: FastAPI Backend - Base Endpoints - DONE
 ```
 git commit -m "Add FastAPI backend with basic CRUD operations"
 ```
@@ -41,7 +41,7 @@ git commit -m "Add FastAPI backend with basic CRUD operations"
 - Implement error handling
 - Add simple test client script
 
-### Commit 5: Storage Manager Completion
+### Commit 5: Storage Manager Completion - DONE
 ```
 git commit -m "Complete storage manager with get_entries and get_entry methods"
 ```
@@ -52,7 +52,7 @@ git commit -m "Complete storage manager with get_entries and get_entry methods"
 
 ## Phase 3: Vector Search Integration
 
-### Commit 6: SQLite Vector Search Integration
+### Commit 6: SQLite Vector Search Integration - DONE
 ```
 git commit -m "Add SQLite-based vector storage"
 ```
@@ -62,7 +62,7 @@ git commit -m "Add SQLite-based vector storage"
 - Update entry creation to include vector storage
 - Prepare for Ollama integration in Commit 8
 
-### Commit 7: Simple Text Search
+### Commit 7: Simple Text Search - DONE
 ```
 git commit -m "Implement basic text search functionality"
 ```
@@ -72,7 +72,7 @@ git commit -m "Implement basic text search functionality"
 
 ## Phase 4: Ollama LLM Integration
 
-### Commit 8: Structured Output Implementation
+### Commit 8: Structured Output Implementation - DONE
 ```
 git commit -m "Implement structured outputs for journal entry analysis"
 ```
@@ -81,7 +81,7 @@ git commit -m "Implement structured outputs for journal entry analysis"
 - Connect to API via endpoint
 - Test with sample journal entries
 
-### Commit 9: Semantic Search
+### Commit 9: Semantic Search - DONE
 ```
 git commit -m "Add semantic search functionality via Ollama embeddings"
 ```
@@ -92,7 +92,7 @@ git commit -m "Add semantic search functionality via Ollama embeddings"
 
 ## Phase 5: Frontend Implementation
 
-### Commit 10: Basic HTML/CSS Structure
+### Commit 10: Basic HTML/CSS Structure - DONE
 ```
 git commit -m "Add initial HTML structure and static file serving"
 ```
@@ -101,7 +101,7 @@ git commit -m "Add initial HTML structure and static file serving"
 - Configure FastAPI to serve static files
 - Test basic page loading
 
-### Commit 11: Entry Creation & Listing UI
+### Commit 11: Entry Creation & Listing UI - DONE
 ```
 git commit -m "Implement UI for creating and listing journal entries"
 ```
@@ -110,7 +110,7 @@ git commit -m "Implement UI for creating and listing journal entries"
 - Connect to API endpoints with JavaScript
 - Test basic workflow
 
-### Commit 12: Entry Detail View & Search UI
+### Commit 12: Entry Detail View & Search UI - DONE
 ```
 git commit -m "Add entry detail view and search functionality to UI"
 ```
@@ -121,7 +121,7 @@ git commit -m "Add entry detail view and search functionality to UI"
 
 ## Phase 6: LLM Features in UI
 
-### Commit 13: Summary Feature UI
+### Commit 13: Summary Feature UI - DONE
 ```
 git commit -m "Add entry summarization feature to UI"
 ```
@@ -130,7 +130,7 @@ git commit -m "Add entry summarization feature to UI"
 - Connect to summary endpoint
 - Test summarization functionality
 
-### Commit 14: Advanced Search Options
+### Commit 14: Advanced Search Options - DONE
 ```
 git commit -m "Enhance UI with semantic search toggle and advanced options"
 ```
@@ -147,7 +147,7 @@ git commit -m "Enhance UI with semantic search toggle and advanced options"
 
 ## Phase 7: Refinement & Quality Assurance
 
-### Commit 15: Error Handling & UX Improvements
+### Commit 15: Error Handling & UX Improvements - DONE
 ```
 git commit -m "Improve error handling and user experience"
 ```
@@ -156,7 +156,7 @@ git commit -m "Improve error handling and user experience"
 - Add confirmation dialogs
 - Test edge cases
 
-### Commit 16: Performance Optimization
+### Commit 16: Performance Optimization - DONE
 ```
 git commit -m "Optimize performance for vector search and entry loading"
 ```
@@ -166,7 +166,7 @@ git commit -m "Optimize performance for vector search and entry loading"
 - Implement caching where appropriate
 - Test with larger dataset
 
-### Commit 17: Documentation & Testing
+### Commit 17: Documentation & Testing - DONE
 ```
 git commit -m "Add comprehensive documentation and testing"
 ```

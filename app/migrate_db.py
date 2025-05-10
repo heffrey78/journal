@@ -8,7 +8,7 @@ It should be run whenever the database schema changes.
 import os
 import sqlite3
 import logging
-from app.models import LLMConfig
+from app.models import LLMConfig, ChatConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -154,6 +154,132 @@ def migrate_database(db_path="./journal_data/journal.db"):
             )
             logger.info("batch_analysis_entries index created successfully")
 
+        # Check if chat_sessions table exists
+        if "chat_sessions" not in existing_tables:
+            logger.info("Creating chat_sessions table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    last_accessed TEXT NOT NULL,
+                    context_summary TEXT,
+                    temporal_filter TEXT,
+                    entry_count INTEGER DEFAULT 0
+                )
+                """
+            )
+            logger.info("chat_sessions table created successfully")
+
+            # Create index for chat_sessions
+            cursor.execute(
+                """CREATE INDEX IF NOT EXISTS idx_chat_sessions_last_accessed
+                ON chat_sessions(last_accessed)"""
+            )
+            logger.info("chat_sessions index created successfully")
+
+        # Check if chat_messages table exists
+        if "chat_messages" not in existing_tables:
+            logger.info("Creating chat_messages table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    metadata TEXT,
+                    token_count INTEGER,
+                    FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+                    ON DELETE CASCADE
+                )
+                """
+            )
+            logger.info("chat_messages table created successfully")
+
+            # Create index for chat_messages
+            cursor.execute(
+                """CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id_created_at
+                ON chat_messages(session_id, created_at)"""
+            )
+            logger.info("chat_messages index created successfully")
+
+        # Check if chat_message_entries table exists
+        if "chat_message_entries" not in existing_tables:
+            logger.info("Creating chat_message_entries relation table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_message_entries (
+                    message_id TEXT,
+                    entry_id TEXT,
+                    similarity_score REAL,
+                    chunk_index INTEGER,
+                    PRIMARY KEY (message_id, entry_id),
+                    FOREIGN KEY (message_id) REFERENCES chat_messages(id)
+                    ON DELETE CASCADE,
+                    FOREIGN KEY (entry_id) REFERENCES entries(id)
+                    ON DELETE CASCADE
+                )
+                """
+            )
+            logger.info("chat_message_entries table created successfully")
+
+            # Create index for chat_message_entries
+            cursor.execute(
+                """CREATE INDEX IF NOT EXISTS idx_chat_message_entries_entry_id
+                ON chat_message_entries(entry_id)"""
+            )
+            logger.info("chat_message_entries entry_id index created successfully")
+
+            cursor.execute(
+                """CREATE INDEX IF NOT EXISTS idx_chat_message_entries_message_id
+                ON chat_message_entries(message_id)"""
+            )
+            logger.info("chat_message_entries message_id index created successfully")
+
+        # Check if chat_config table exists
+        if "chat_config" not in existing_tables:
+            logger.info("Creating chat_config table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_config (
+                    id TEXT PRIMARY KEY DEFAULT 'default',
+                    system_prompt TEXT NOT NULL,
+                    max_context_tokens INTEGER DEFAULT 4096,
+                    temperature REAL DEFAULT 0.7,
+                    retrieval_limit INTEGER DEFAULT 10,
+                    chunk_size INTEGER DEFAULT 500,
+                    conversation_summary_threshold INTEGER DEFAULT 2000
+                )
+                """
+            )
+            logger.info("chat_config table created successfully")
+
+            # Populate with default config
+            logger.info("Populating default chat configuration")
+            default_chat_config = ChatConfig()
+            cursor.execute(
+                """
+                INSERT INTO chat_config (
+                    id, system_prompt, max_context_tokens, temperature,
+                    retrieval_limit, chunk_size, conversation_summary_threshold
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    default_chat_config.id,
+                    default_chat_config.system_prompt,
+                    default_chat_config.max_context_tokens,
+                    default_chat_config.temperature,
+                    default_chat_config.retrieval_limit,
+                    default_chat_config.chunk_size,
+                    default_chat_config.conversation_summary_threshold,
+                ),
+            )
+            logger.info("Default chat configuration added successfully")
+
         # Verify all tables were created properly
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables_after_migration = [row[0] for row in cursor.fetchall()]
@@ -162,6 +288,10 @@ def migrate_database(db_path="./journal_data/journal.db"):
             "prompt_types",
             "batch_analyses",
             "batch_analysis_entries",
+            "chat_sessions",
+            "chat_messages",
+            "chat_message_entries",
+            "chat_config",
         ]
         missing_tables = [
             table for table in required_tables if table not in tables_after_migration

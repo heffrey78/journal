@@ -4,7 +4,7 @@ This plan outlines the step-by-step process to implement the batch analysis feat
 
 ## Phase 1: Backend Foundation
 
-### Commit 28: Batch Analysis Models
+### Commit 28: Batch Analysis Models - DONE
 ```
 git commit -m "Add batch analysis data models and database structure"
 ```
@@ -14,7 +14,7 @@ git commit -m "Add batch analysis data models and database structure"
 - Update database initialization to include new tables
 - Add basic tests for new models
 
-### Commit 29: Storage Manager Extensions
+### Commit 29: Storage Manager Extensions - DONE
 ```
 git commit -m "Extend storage manager with batch analysis support"
 ```
@@ -25,7 +25,7 @@ git commit -m "Extend storage manager with batch analysis support"
 - Add functions to delete batch analyses
 - Add unit tests for new storage manager functionality
 
-### Commit 30: LLM Service Batch Processing
+### Commit 30: LLM Service Batch Processing - DONE
 ```
 git commit -m "Add batch analysis method to LLM service"
 ```
@@ -38,7 +38,7 @@ git commit -m "Add batch analysis method to LLM service"
 
 ## Phase 2: API Endpoints
 
-### Commit 31: Batch Analysis API Routes
+### Commit 31: Batch Analysis API Routes - DONE
 ```
 git commit -m "Add batch analysis API endpoints"
 ```
@@ -49,7 +49,7 @@ git commit -m "Add batch analysis API endpoints"
 - Update API documentation with new endpoints
 - Create integration tests for batch analysis endpoints
 
-### Commit 32: Enhanced Entry Selection API
+### Commit 32: Enhanced Entry Selection API - DONE
 ```
 git commit -m "Add API support for improved entry selection"
 ```
@@ -62,7 +62,7 @@ git commit -m "Add API support for improved entry selection"
 
 ## Phase 3: Next.js Frontend Components
 
-### Commit 33: Batch Analysis UI Models
+### Commit 33: Batch Analysis UI Models - DONE
 ```
 git commit -m "Add batch analysis types and API client functions"
 ```
@@ -72,7 +72,7 @@ git commit -m "Add batch analysis types and API client functions"
 - Add utility functions for batch operations
 - Test API client functions
 
-### Commit 34: Batch Analysis Dialog Component
+### Commit 34: Batch Analysis Dialog Component - DONE
 ```
 git commit -m "Create batch analysis dialog component"
 ```
@@ -84,7 +84,7 @@ git commit -m "Create batch analysis dialog component"
 - Create basic styles for the component
 - Test component rendering and state management
 
-### Commit 35: Batch Analysis Results Component
+### Commit 35: Batch Analysis Results Component - DONE
 ```
 git commit -m "Add batch analysis results view component"
 ```
@@ -99,7 +99,7 @@ git commit -m "Add batch analysis results view component"
 
 ## Phase 4: Frontend Integration
 
-### Commit 36: Entry List Integration
+### Commit 36: Entry List Integration - DONE
 ```
 git commit -m "Integrate batch analysis with entry list component"
 ```
@@ -109,8 +109,8 @@ git commit -m "Integrate batch analysis with entry list component"
 - Add proper error handling for analysis operations
 - Add loading states during analysis
 - Test the integrated functionality
- 
-### Commit 37: Batch Analysis List Page
+
+### Commit 37: Batch Analysis List Page - DONE
 ```
 git commit -m "Add page to view all batch analyses"
 ```
@@ -121,7 +121,7 @@ git commit -m "Add page to view all batch analyses"
 - Add delete functionality
 - Test page functionality
 
-### Commit 38: Batch Analysis Detail Page
+### Commit 38: Batch Analysis Detail Page - DONE
 ```
 git commit -m "Create batch analysis detail view page"
 ```

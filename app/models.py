@@ -367,6 +367,20 @@ class ChatConfig(BaseModel):
     use_enhanced_retrieval: bool = True  # Whether to use enhanced retrieval
     max_tokens: int = 2048  # Maximum tokens in response
 
+    # Context management parameters
+    max_context_tokens: int = 4096  # Maximum tokens for entire context
+    conversation_summary_threshold: int = 2000  # Token threshold for summarization
+    context_window_size: int = (
+        10  # Number of recent messages to include without summarization
+    )
+    use_context_windowing: bool = True  # Whether to use context windowing
+    min_messages_for_summary: int = (
+        6  # Minimum messages before summarization is triggered
+    )
+    summary_prompt: str = (
+        "Summarize the key points of this conversation so far in 3-4 sentences:"
+    )
+
     class Config:
         """Pydantic config options"""
 
@@ -380,6 +394,8 @@ class ChatConfig(BaseModel):
                 "retrieval_limit": 10,
                 "chunk_size": 500,
                 "conversation_summary_threshold": 2000,
+                "context_window_size": 10,
+                "use_context_windowing": True,
             }
         }
 

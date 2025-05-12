@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Path
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 
 from app.models import ChatSession, ChatMessage, ChatConfig, EntryReference
@@ -62,6 +63,13 @@ class ChatResponseWithReferences(BaseModel):
     """Model for chat responses with references included."""
 
     message: ChatMessage
+    references: List[EntryReference] = []
+
+
+class StreamChatResponse(BaseModel):
+    """Model for streaming chat response metadata."""
+
+    message_id: str
     references: List[EntryReference] = []
 
 
@@ -590,6 +598,9 @@ async def process_user_message(
                 status_code=404, detail=f"Chat session with ID {session_id} not found"
             )
 
+        # Try to extract and apply temporal filter from message
+        chat_service.update_session_temporal_filter(session_id, message_data.content)
+
         # Create a new message
         user_message = ChatMessage(
             session_id=session_id,
@@ -617,4 +628,225 @@ async def process_user_message(
         logger.error(f"Failed to process message: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to process message: {str(e)}"
+        )
+
+
+@chat_router.post("/sessions/{session_id}/stream", response_model=StreamChatResponse)
+async def stream_user_message(
+    message_data: ChatMessageCreate,
+    session_id: str = Path(..., description="The ID of the chat session"),
+    storage=Depends(get_storage),
+    llm_service: LLMService = Depends(get_llm_service),
+) -> StreamingResponse:
+    """
+    Process a user message and stream an AI-generated response.
+
+    Args:
+        message_data: The user message content
+        session_id: The ID of the chat session
+
+    Returns:
+        Streaming response with AI-generated content
+    """
+    try:
+        logger.info(f"Starting streaming response for session {session_id}")
+        chat_storage = ChatStorage(storage.base_dir)
+        chat_service = ChatService(chat_storage, llm_service)
+
+        # Check if session exists
+        session = chat_storage.get_session(session_id)
+        if not session:
+            logger.error(f"Session {session_id} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Chat session with ID {session_id} not found"
+            )
+
+        # Try to extract and apply temporal filter from message
+        chat_service.update_session_temporal_filter(session_id, message_data.content)
+
+        # Create a new message
+        user_message = ChatMessage(
+            session_id=session_id,
+            role="user",
+            content=message_data.content,
+            created_at=datetime.now(),
+        )
+
+        # Save the user message
+        saved_user_message = chat_storage.add_message(user_message)
+        logger.info(f"Saved user message: {saved_user_message.id}")
+
+        # Get streaming response, references, and message ID
+        logger.info("Getting streaming response from chat service")
+        response_iterator, references, message_id = chat_service.stream_message(
+            saved_user_message
+        )
+        logger.info(f"Got message_id: {message_id} with {len(references)} references")
+
+        # Create an async generator to convert the sync iterator to async
+        async def event_generator():
+            import json
+
+            # Send the message ID and references as the first event
+            metadata = StreamChatResponse(message_id=message_id, references=references)
+            logger.info(f"Sending initial metadata event with message_id: {message_id}")
+            yield f"data: {metadata.json()}\n\n"
+
+            # Stream the actual content - simplified approach
+            chunk_count = 0
+            try:
+                for chunk in response_iterator:
+                    chunk_count += 1
+                    # Log the chunk we received
+                    if isinstance(chunk, str):
+                        logger.debug(f"Received chunk {chunk_count}: '{chunk}'")
+                    else:
+                        logger.debug(
+                            f"Received non-string chunk {chunk_count}: "
+                            f"{type(chunk)}: {chunk}"
+                        )
+
+                    # We're just expecting string chunks here since we already
+                    # extracted the content in _generate_streaming_response
+                    if chunk and isinstance(chunk, str):
+                        message_json = json.dumps({"text": chunk})
+                        logger.debug(f"Sending chunk to client: '{chunk}'")
+                        yield f"data: {message_json}\n\n"
+                    else:
+                        logger.warning(f"Skipping invalid chunk: {chunk}")
+
+                logger.info(f"Finished streaming {chunk_count} chunks")
+            except Exception as e:
+                logger.error(f"Error during streaming: {str(e)}")
+                error_json = json.dumps({"error": str(e)})
+                yield f"data: {error_json}\n\n"
+
+            # Signal the end of the stream
+            logger.info("Sending [DONE] event")
+            yield "data: [DONE]\n\n"
+
+        # Return a streaming response
+        logger.info("Returning streaming response")
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stream message: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to stream message: {str(e)}"
+        )
+
+
+@chat_router.post("/sessions/{session_id}/summary", response_model=Dict[str, Any])
+async def update_session_summary(
+    session_id: str = Path(..., description="The ID of the chat session"),
+    storage=Depends(get_storage),
+    llm_service: LLMService = Depends(get_llm_service),
+) -> Dict[str, Any]:
+    """
+    Force the creation or update of a conversation summary for the chat session.
+
+    This is useful when a conversation has grown long and needs to be condensed.
+
+    Args:
+        session_id: The ID of the chat session to summarize
+
+    Returns:
+        Status of the operation
+    """
+    try:
+        chat_storage = ChatStorage(storage.base_dir)
+        chat_service = ChatService(chat_storage, llm_service)
+
+        # Check if session exists
+        session = chat_storage.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=404, detail=f"Chat session with ID {session_id} not found"
+            )
+
+        # Update the summary
+        success = chat_service.update_session_summary(session_id)
+
+        if success:
+            # Get updated session
+            updated_session = chat_storage.get_session(session_id)
+            return {
+                "status": "success",
+                "message": "Session summary updated successfully",
+                "summary": updated_session.context_summary,
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": "Could not update session summary. "
+                "The conversation may be too short to summarize.",
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update session summary: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update session summary: {str(e)}"
+        )
+
+
+@chat_router.delete("/sessions/{session_id}/summary", response_model=Dict[str, Any])
+async def clear_session_summary(
+    session_id: str = Path(..., description="The ID of the chat session"),
+    storage=Depends(get_storage),
+    llm_service: LLMService = Depends(get_llm_service),
+) -> Dict[str, Any]:
+    """
+    Clear the conversation summary for the chat session.
+
+    This restores full context for the conversation.
+
+    Args:
+        session_id: The ID of the chat session
+
+    Returns:
+        Status of the operation
+    """
+    try:
+        chat_storage = ChatStorage(storage.base_dir)
+        chat_service = ChatService(chat_storage, llm_service)
+
+        # Check if session exists
+        session = chat_storage.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=404, detail=f"Chat session with ID {session_id} not found"
+            )
+
+        # Clear the summary
+        success = chat_service.clear_session_summary(session_id)
+
+        if success:
+            return {
+                "status": "success",
+                "message": "Session summary cleared successfully",
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to clear session summary",
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to clear session summary: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to clear session summary: {str(e)}"
         )

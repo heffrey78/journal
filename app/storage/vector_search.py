@@ -287,6 +287,10 @@ class VectorStorage(BaseStorage):
         Returns:
             List of dictionaries with search results
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
@@ -294,13 +298,64 @@ class VectorStorage(BaseStorage):
             cursor.execute("SELECT COUNT(*) FROM vectors WHERE embedding IS NOT NULL")
             total_vectors = cursor.fetchone()[0]
 
+            if total_vectors == 0:
+                logger.warning("No vectors with embeddings found in database")
+                return []
+
             all_results = []
+            query_embedding_dim = len(query_embedding)
+            logger.debug(f"Query embedding dimension: {query_embedding_dim}")
+
+            # Get sample embedding to check dimensions
+            cursor.execute(
+                "SELECT embedding FROM vectors WHERE embedding IS NOT NULL LIMIT 1"
+            )
+            sample = cursor.fetchone()
+
+            if not sample or not sample[0]:
+                logger.warning("No valid embeddings found in database")
+                return []
+
+            # Check dimensions of stored embeddings
+            stored_embedding = np.frombuffer(sample[0], dtype=np.float32)
+            stored_dim = len(stored_embedding)
+            logger.debug(f"Stored embedding dimension: {stored_dim}")
+
+            # Handle dimension mismatch
+            if query_embedding_dim != stored_dim:
+                logger.warning(
+                    f"Dimension mismatch: query={query_embedding_dim}, "
+                    f"stored={stored_dim}. "
+                    "Attempting dimension adaptation."
+                )
+
+                # Option 1: Truncate to the smaller dimension
+                if query_embedding_dim > stored_dim:
+                    logger.info(
+                        f"Truncating query embedding from {query_embedding_dim} "
+                        f"to {stored_dim}"
+                    )
+                    query_embedding = query_embedding[:stored_dim]
+                # Option 2: Pad with zeros
+                else:
+                    logger.info(
+                        f"Padding query embedding from {query_embedding_dim} "
+                        f"to {stored_dim}"
+                    )
+                    padding = np.zeros(stored_dim - query_embedding_dim)
+                    query_embedding = np.concatenate([query_embedding, padding])
 
             # Process in batches to avoid memory issues with large datasets
             for batch_offset in range(0, total_vectors, batch_size):
                 cursor.execute(
                     """
-                    SELECT v.id, v.entry_id, v.text, v.embedding, e.title
+                    SELECT v.id,
+                    v.entry_id,
+                    v.text,
+                    v.embedding,
+                    e.title,
+                    e.content,
+                    e.created_at
                     FROM vectors v
                     JOIN entries e ON v.entry_id = e.id
                     WHERE v.embedding IS NOT NULL
@@ -311,34 +366,81 @@ class VectorStorage(BaseStorage):
 
                 batch_results = []
                 for row in cursor.fetchall():
-                    vector_id, entry_id, text, embedding_bytes, title = row
+                    (
+                        vector_id,
+                        entry_id,
+                        text,
+                        embedding_bytes,
+                        title,
+                        content,
+                        created_at,
+                    ) = row
                     if embedding_bytes:
-                        # Convert bytes back to numpy array
-                        db_embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
+                        try:
+                            # Convert bytes back to numpy array
+                            db_embedding = np.frombuffer(
+                                embedding_bytes, dtype=np.float32
+                            )
 
-                        # Calculate cosine similarity
-                        similarity = float(
-                            cosine_similarity([query_embedding], [db_embedding])[0][0]
-                        )
+                            # Ensure dimension match with query
+                            if len(db_embedding) != len(query_embedding):
+                                logger.warning(
+                                    f"Skipping vector {vector_id}: dimension mismatch "
+                                    f"({len(db_embedding)} vs {len(query_embedding)})"
+                                )
+                                continue
 
-                        batch_results.append(
-                            {
-                                "vector_id": vector_id,
-                                "entry_id": entry_id,
-                                "title": title,
-                                "text": text,
-                                "similarity": similarity,
-                            }
-                        )
+                            # Calculate cosine similarity
+                            similarity = float(
+                                cosine_similarity([query_embedding], [db_embedding])[0][
+                                    0
+                                ]
+                            )
+
+                            # Create entry object for the result
+                            from app.models import JournalEntry
+
+                            entry = JournalEntry(
+                                id=entry_id,
+                                title=title,
+                                content=content,
+                                created_at=created_at,
+                            )
+
+                            batch_results.append(
+                                {
+                                    "vector_id": vector_id,
+                                    "entry_id": entry_id,
+                                    "entry": entry,
+                                    "text": text,
+                                    "similarity": similarity,
+                                }
+                            )
+                        except Exception as e:
+                            logger.warning(f"Error processing vector {vector_id}: {e}")
 
                 all_results.extend(batch_results)
 
             # Sort all results by similarity
             all_results.sort(key=lambda x: x["similarity"], reverse=True)
 
+            # Log top matches for debugging
+            if all_results:
+                top_match = all_results[0]
+                logger.debug(
+                    f"Top match: entry_id={top_match['entry_id']}, "
+                    f"similarity={top_match['similarity']:.4f}"
+                )
+
             # Apply pagination
             paginated_results = all_results[offset : offset + limit]  # noqa: E203
+            logger.info(
+                f"Returning {len(paginated_results)} results from semantic search"
+            )
 
             return paginated_results
+        except Exception as e:
+            logger.error(f"Error in semantic search: {e}")
+            return []
         finally:
             conn.close()

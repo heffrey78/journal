@@ -59,13 +59,29 @@ Let me start by analyzing the current plan to understand what we're working with
 
 10. **Temporal Query Parsing**
     - Add simple date extraction from messages
+      - Create a utility function to identify and parse date-related phrases
+      - Support relative dates ("yesterday", "last week", "two months ago")
+      - Support absolute dates ("May 5", "2025-01-01")
+      - Support date ranges ("between March and April", "last two weeks")
     - Implement basic temporal filtering
-    - Verifiable: Queries like "last week" retrieve entries from that timeframe
+      - Create a date filter component that integrates with existing search
+      - Modify entry retrieval to apply temporal constraints
+      - Add ability to combine temporal filters with content relevance
+    - Add temporal context awareness
+      - Track "current" time reference in conversation
+      - Allow follow-up queries to use previously established time context
+    - Implement natural language time query interpreter
+      - Parse complex time expressions ("the week before my vacation")
+      - Handle ambiguous references with clarification
+    - Verifiable:
+      - Queries like "last week" retrieve entries from that timeframe
+      - System can handle both specific dates and relative time references
+      - Temporal filters combine properly with semantic search
 
 11. **Context Management**
-    - Add conversation context windowing
-    - Implement summarization for long conversations
-    - Verifiable: Long conversations don't exceed token limits
+   - Add conversation context windowing
+   - Implement summarization for long conversations
+   - Verifiable: Long conversations don't exceed token limits
 
 ### Phase 4: Frontend & Integration
 
@@ -77,16 +93,21 @@ Let me start by analyzing the current plan to understand what we're working with
 13. **Streaming UI Integration**
     - Update UI to handle streamed responses
     - Add typing indicators
+    - Add markdown support
     - Verifiable: UI shows responses as they stream in
+    - Verifiable: Markdown is rendered correctly
 
-14. **Citation UI**
-    - Add clickable entry references
+14. **Citation UI and Theming**
+    - Clickable entry references open in new tab
     - Show citation metadata
-    - Verifiable: Can click references to view original entries
+    - Chat UI should match theming and layout of existing pages
+    - Verifiable: Can click references to view original entries in a new tab
+    - Verifiable: Citation metadata is accurately displayed
 
-15. **Chat History & Session Management UI**
+15. **Chat History, Session Management UI**
     - List chat sessions
     - Allow creating new sessions
+    - Allow deleting sessions
     - Verifiable: Can switch between conversations
 
 ### Phase 5: Testing & Refinement

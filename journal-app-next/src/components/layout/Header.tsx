@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ThemeToggle from '../theme/ThemeToggle';
-import { ChartBarIcon } from '@heroicons/react/24/outline';
+import { ChartBarIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import Container from './Container';
 import Cluster from './Cluster';
@@ -55,6 +55,16 @@ const Header: React.FC = () => {
               >
                 <ChartBarIcon className="h-4 w-4 mr-1" />
                 Analyses
+              </Link>
+              <Link
+                href="/chat"
+                className={cn(
+                  "text-foreground hover:text-primary px-1 py-2 flex items-center transition-colors",
+                  isActive('/chat')
+                )}
+              >
+                <ChatBubbleLeftRightIcon className="h-4 w-4 mr-1" />
+                Chat
               </Link>
               <Link
                 href="/search"

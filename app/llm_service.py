@@ -8,7 +8,7 @@ embedding generation and structured outputs.
 import ollama
 import logging
 import json
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Iterator, Union
 from pydantic import BaseModel
 from app.storage import StorageManager
 from app.models import LLMConfig, BatchAnalysis, JournalEntry
@@ -185,7 +185,7 @@ class LLMService:
         """
         try:
             # Call Ollama's embeddings endpoint
-            response = ollama.embeddings(model=self.model_name, prompt=text)
+            response = ollama.embeddings(model=self.embedding_model, prompt=text)
 
             if "embedding" in response:
                 return response["embedding"]
@@ -1040,7 +1040,8 @@ class LLMService:
         messages: List[Dict[str, str]],
         temperature: float = None,
         max_tokens: int = None,
-    ) -> Dict[str, Any]:
+        stream: bool = False,
+    ) -> Union[Dict[str, Any], Iterator[Dict[str, Any]]]:
         """
         Generate a chat completion response using Ollama.
 
@@ -1048,9 +1049,11 @@ class LLMService:
             messages: List of message dictionaries with 'role' and 'content' keys
             temperature: Optional temperature parameter (0-1) to control randomness
             max_tokens: Optional maximum tokens to generate
+            stream: Whether to stream the response token by token
 
         Returns:
-            Dictionary containing the response
+            If stream=False: Dictionary containing the response
+            If stream=True: Iterator yielding response chunks
 
         Raises:
             LLMServiceError: If the chat completion fails
@@ -1061,13 +1064,80 @@ class LLMService:
             tokens = max_tokens if max_tokens is not None else self.max_tokens
 
             # Call Ollama for chat completion
-            response = ollama.chat(
-                model=self.model_name,
-                messages=messages,
-                options={"temperature": temp, "num_predict": tokens},
-            )
+            if stream:
+                return self._stream_chat_completion(messages, temp, tokens)
+            else:
+                response = ollama.chat(
+                    model=self.model_name,
+                    messages=messages,
+                    options={"temperature": temp, "num_predict": tokens},
+                )
 
-            return response
+                return response
         except Exception as e:
             logger.error(f"Chat completion failed: {e}")
             raise LLMServiceError(f"Failed to generate chat completion: {e}")
+
+    def _stream_chat_completion(
+        self, messages: List[Dict[str, str]], temperature: float, max_tokens: int
+    ) -> Iterator[str]:
+        """
+        Stream a chat completion response from Ollama.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            temperature: Temperature parameter (0-1) to control randomness
+            max_tokens: Maximum tokens to generate
+
+        Yields:
+            Text content chunks as they are generated
+
+        Raises:
+            LLMServiceError: If the streaming chat completion fails
+        """
+        import requests
+        import json
+
+        try:
+            # Prepare the request payload
+            data = {
+                "model": self.model_name,
+                "messages": messages,
+                "stream": True,
+                "options": {"temperature": temperature, "num_predict": max_tokens},
+            }
+
+            # Make the request directly to the Ollama API
+            url = "http://localhost:11434/api/chat"
+            response = requests.post(url, json=data, stream=True)
+
+            if not response.ok:
+                raise LLMServiceError(
+                    f"Ollama API error: {response.status_code} {response.reason}"
+                )
+
+            # Process each line in the streaming response
+            for line in response.iter_lines():
+                if not line:
+                    continue
+
+                # Parse the JSON chunk
+                try:
+                    chunk = json.loads(line.decode("utf-8"))
+
+                    # Skip the final completion chunk with done=True
+                    if chunk.get("done") is True:
+                        continue
+
+                    # Extract just the message content
+                    if "message" in chunk and "content" in chunk["message"]:
+                        content = chunk["message"]["content"]
+                        if content:  # Skip empty content
+                            yield content
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse Ollama response: {e}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Streaming chat completion failed: {e}")
+            raise LLMServiceError(f"Failed to stream chat completion: {e}")

@@ -205,3 +205,182 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Typing indicator animation */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.typing-indicator span {
+  height: 8px;
+  width: 8px;
+  margin: 0 2px;
+  background-color: #6b7280;
+  border-radius: 50%;
+  display: inline-block;
+  animation: typing-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+/* Markdown styling for chat messages */
+.markdown-content.prose {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  max-width: none; /* Override Tailwind prose max-width */
+}
+
+.markdown-content.prose h1,
+.markdown-content.prose h2,
+.markdown-content.prose h3 {
+  margin-top: 0.75em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.markdown-content.prose h1 {
+  font-size: 1.4rem;
+}
+
+.markdown-content.prose h2 {
+  font-size: 1.25rem;
+}
+
+.markdown-content.prose h3 {
+  font-size: 1.1rem;
+}
+
+.markdown-content.prose p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.markdown-content.prose ul,
+.markdown-content.prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.5rem;
+}
+
+.markdown-content.prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.markdown-content.prose a {
+  color: #2563eb; /* blue-600 */
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.markdown-content.prose a:hover {
+  color: #1d4ed8; /* blue-700 */
+}
+
+.markdown-content.prose blockquote {
+  border-left: 3px solid #d1d5db; /* gray-300 */
+  padding-left: 1em;
+  color: #6b7280; /* gray-500 */
+  font-style: italic;
+  margin: 0.5em 0;
+}
+
+.markdown-content.prose code {
+  font-size: 0.9em;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  background-color: #f3f4f6; /* gray-100 */
+  color: #111827; /* gray-900 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.markdown-content.prose pre {
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  background-color: #1f2937; /* gray-800 */
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.markdown-content.prose pre code {
+  background-color: transparent;
+  color: #f3f4f6; /* gray-100 */
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Dark mode adjustments */
+.dark .markdown-content.prose code {
+  background-color: #374151; /* gray-700 */
+  color: #e5e7eb; /* gray-200 */
+}
+
+.dark .markdown-content.prose a {
+  color: #3b82f6; /* blue-500 */
+}
+
+.dark .markdown-content.prose a:hover {
+  color: #60a5fa; /* blue-400 */
+}
+
+.dark .markdown-content.prose blockquote {
+  border-color: #4b5563; /* gray-600 */
+  color: #9ca3af; /* gray-400 */
+}
+
+/* Table styling for markdown */
+.markdown-content.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+
+.markdown-content.prose thead {
+  background-color: #f3f4f6; /* gray-100 */
+  border-bottom: 2px solid #e5e7eb; /* gray-200 */
+}
+
+.dark .markdown-content.prose thead {
+  background-color: #374151; /* gray-700 */
+  border-bottom-color: #4b5563; /* gray-600 */
+}
+
+.markdown-content.prose th {
+  padding: 0.5em;
+  font-weight: 600;
+  text-align: left;
+}
+
+.markdown-content.prose td {
+  padding: 0.5em;
+  border-bottom: 1px solid #e5e7eb; /* gray-200 */
+}
+
+.dark .markdown-content.prose td {
+  border-bottom-color: #4b5563; /* gray-600 */
+}
+
+/* Image styling for markdown */
+.markdown-content.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.75em 0;
+}

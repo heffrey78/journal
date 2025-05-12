@@ -827,8 +827,8 @@ class ChatStorage(BaseStorage):
                     insert_values.append(0)
 
                 placeholders = ", ".join(["?" for _ in insert_fields])
-                insert_query = f"INSERT INTO chat_config ({', '.join(insert_fields)}) "
-                f"VALUES ({placeholders})"
+                insert_query = "INSERT INTO chat_config ("
+                f"{', '.join(insert_fields)}) VALUES ({placeholders})"
                 cursor.execute(insert_query, tuple(insert_values))
 
             conn.commit()
@@ -837,5 +837,44 @@ class ChatStorage(BaseStorage):
             conn.rollback()
             logger.error(f"Failed to update chat config: {str(e)}")
             raise e
+        finally:
+            conn.close()
+
+    def update_message_content(self, message_id: str, content: str) -> bool:
+        """
+        Update the content of an existing chat message.
+
+        This is especially useful for streaming responses where the message
+        content is built up over time.
+
+        Args:
+            message_id: The ID of the message to update
+            content: The new content for the message
+
+        Returns:
+            True if successful, False otherwise
+        """
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                """
+                UPDATE chat_messages
+                SET content = ?
+                WHERE id = ?
+                """,
+                (content, message_id),
+            )
+
+            success = cursor.rowcount > 0
+            conn.commit()
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to update message content: {str(e)}")
+            conn.rollback()
+            return False
+
         finally:
             conn.close()

@@ -16,7 +16,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
 
   // Process message content to handle citation references like [1], [2], etc.
   const processMessageContent = (content: string) => {
-    if (!message.references || message.references.length === 0) {
+    if (!message.has_references || !message.references || message.references.length === 0) {
       return content;
     }
 

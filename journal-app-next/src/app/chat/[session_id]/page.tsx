@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ChatInterface } from '@/components/chat';
+import { ChatInterface, ChatSessionsSidebar } from '@/components/chat';
 import { getChatSession } from '@/api/chat';
 import { ChatSession } from '@/types/chat';
 import { ArrowPathIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
@@ -14,6 +14,7 @@ export default function ChatSessionPage() {
   const [session, setSession] = useState<ChatSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -65,9 +66,7 @@ export default function ChatSessionPage() {
         </Link>
       </div>
     );
-  }
-
-  return (
+  }  return (
     <div className="flex flex-col h-full">
       <div className="border-b pb-2 pt-1 px-2 flex justify-between items-center bg-background/90 sticky top-0 z-10">
         <h1 className="text-xl font-semibold truncate">{session.title}</h1>
@@ -95,8 +94,18 @@ export default function ChatSessionPage() {
         </div>
       </div>
 
-      <div className="flex-grow">
-        <ChatInterface sessionId={session_id as string} />
+      <div className="flex flex-grow overflow-hidden">
+        {/* Chat Sessions Sidebar */}
+        <ChatSessionsSidebar
+          currentSessionId={session_id as string}
+          isOpen={sidebarOpen}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+        />
+
+        {/* Chat Interface */}
+        <div className="flex-grow overflow-hidden">
+          <ChatInterface sessionId={session_id as string} />
+        </div>
       </div>
     </div>
   );

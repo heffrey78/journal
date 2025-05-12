@@ -28,4 +28,5 @@ export interface Message {
   role: MessageRole;
   timestamp: Date;
   references?: EntryReference[];
+  has_references?: boolean;
 }

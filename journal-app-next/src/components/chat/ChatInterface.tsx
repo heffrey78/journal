@@ -3,11 +3,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
-import EntryReferences from './EntryReferences';
 import { Message, EntryReference } from './types';
 import { AlertCircle } from 'lucide-react';
+import { CHAT_API } from '@/config/api';
 
-export default function ChatInterface() {
+interface ChatInterfaceProps {
+  sessionId?: string;
+}
+
+export default function ChatInterface({ sessionId: propSessionId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -17,23 +21,148 @@ export default function ChatInterface() {
   const [currentMessageReferences, setCurrentMessageReferences] = useState<EntryReference[]>([]);
   const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
   const [useStreaming, setUseStreaming] = useState<boolean>(true);
-  // New state to track the session ID
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // Session state that can be provided via prop or stored in sessionStorage
+  const [sessionId, setSessionId] = useState<string | null>(propSessionId || null);
 
-  // On component mount, check for valid session ID
+  // React to changes in session ID (from props or storage)
   useEffect(() => {
-    const storedSessionId = sessionStorage.getItem('chatSessionId');
+    // If we have a prop sessionId, use that
+    if (propSessionId) {
+      // Only update if the sessionId actually changed to avoid unnecessary rerenders
+      if (sessionId !== propSessionId) {
+        setSessionId(propSessionId);
+        console.log('Using provided session ID from props:', propSessionId);
+      }
+    } else {
+      // Otherwise check sessionStorage
+      const storedSessionId = sessionStorage.getItem('chatSessionId');
 
-    // Check if the session ID starts with "mock_" - if so, clear it
-    if (storedSessionId && storedSessionId.startsWith('mock_')) {
-      console.log('Clearing mock session ID:', storedSessionId);
-      sessionStorage.removeItem('chatSessionId');
-      setSessionId(null);
-    } else if (storedSessionId) {
-      console.log('Using existing session ID:', storedSessionId);
-      setSessionId(storedSessionId);
+      // Check if the session ID starts with "mock_" - if so, clear it
+      if (storedSessionId && storedSessionId.startsWith('mock_')) {
+        console.log('Clearing mock session ID:', storedSessionId);
+        sessionStorage.removeItem('chatSessionId');
+        setSessionId(null);
+      } else if (storedSessionId && sessionId !== storedSessionId) {
+        console.log('Using existing session ID from storage:', storedSessionId);
+        setSessionId(storedSessionId);
+      } else if (!storedSessionId && !propSessionId && sessionId) {
+        // Clear sessionId if there's no prop or stored ID
+        setSessionId(null);
+      }
     }
-  }, []);
+  }, [propSessionId, sessionId]);
+   // Load messages when session ID changes
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!sessionId) return;
+
+      try {
+        setLoading(true);
+        console.log('Loading messages for session:', sessionId);
+
+        // Use direct connection to backend rather than through Next.js API route
+        // This avoids IPv6/IPv4 connection issues
+        const response = await fetch(CHAT_API.MESSAGES(sessionId));
+
+        if (!response.ok) {
+          throw new Error('Failed to load chat history');
+        }
+
+        const data = await response.json();
+
+        if (Array.isArray(data)) {
+          console.log('Received messages:', data.length);
+          // Log the structure of the first message for debugging
+          if (data.length > 0) {
+            console.log('First message structure:', JSON.stringify(data[0], null, 2));
+          }
+
+          // First, transform the basic message data
+          const formattedMessages = data.map(msg => {
+            // Initialize empty references array
+            const references: EntryReference[] = [];
+
+            // Check if we need to fetch references separately
+            const hasReferences = msg.metadata && typeof msg.metadata === 'object' && msg.metadata.has_references === true;
+
+            return {
+              id: msg.id,
+              content: msg.content,
+              role: msg.role,
+              timestamp: new Date(msg.created_at),
+              references,
+              has_references: hasReferences
+            };
+          });
+
+          setMessages(formattedMessages);
+
+          // Now, for messages with has_references=true, fetch the actual references
+          // This is done separately to avoid delaying the initial message display
+          const messagesWithReferences = formattedMessages.filter(msg => msg.has_references);
+
+          if (messagesWithReferences.length > 0) {
+            console.log(`Found ${messagesWithReferences.length} messages with references to fetch`);
+
+            // For each message with references, fetch them
+            const fetchReferencesPromises = messagesWithReferences.map(async (msg) => {
+              try {
+                const refResponse = await fetch(CHAT_API.MESSAGE(sessionId, msg.id));
+
+                if (refResponse.ok) {
+                  const responseData = await refResponse.json();
+                  // The backend returns a structure with message and references fields
+                  const referencesData = responseData.references || [];
+
+                  console.log(`Fetched ${referencesData.length} references for message ${msg.id}`);
+
+                  // Update this specific message with its references
+                  setMessages(currentMessages =>
+                    currentMessages.map(currentMsg =>
+                      currentMsg.id === msg.id
+                        ? { ...currentMsg, references: referencesData }
+                        : currentMsg
+                    )
+                  );
+
+                } else {
+                  console.warn(`Failed to fetch references for message ${msg.id}`);
+                }
+              } catch (refError) {
+                console.error(`Error fetching references for message ${msg.id}:`, refError);
+              }
+            });
+
+            // Don't await these promises to avoid delaying the UI
+            // They will resolve in the background and update the messages state as they complete
+            Promise.all(fetchReferencesPromises).catch(err => {
+              console.error('Error fetching references:', err);
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading chat history:', error);
+        // Log more detailed error information to help with debugging
+        if (error instanceof Error) {
+          console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            sessionId
+          });
+        }
+        setApiError('Failed to load chat history. Try refreshing the page.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (sessionId) {
+      loadMessages();
+    } else {
+      // Clear messages if no session ID
+      setMessages([]);
+    }
+  }, [sessionId]);
 
   // Auto-scroll to the bottom when messages change or during streaming
   useEffect(() => {
@@ -108,14 +237,15 @@ export default function ChatInterface() {
   const streamChatResponse = async (content: string) => {
     try {
       setIsStreaming(true);
-      const response = await fetch('/api/chat/stream', {
+      // Connect directly to backend streaming endpoint
+      const response = await fetch(CHAT_API.STREAM, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           message: content,
-          sessionId: sessionId,
+          session_id: sessionId,  // Note: backend expects snake_case
         }),
       });
 
@@ -195,7 +325,7 @@ export default function ChatInterface() {
               setApiError(parsedData.error);
               break;
             }
-          } catch (e) {
+          } catch {
             // If parsing fails, use the raw data (backward compatibility)
             console.warn('Failed to parse streaming data as JSON, using raw text:', data);
             accumulatedResponse += data;
@@ -227,14 +357,14 @@ export default function ChatInterface() {
 
   // Send a non-streaming message (fallback or direct use)
   const sendNonStreamingMessage = async (content: string) => {
-    const response = await fetch('/api/chat', {
+    // Connect directly to backend non-streaming endpoint
+    const response = await fetch(CHAT_API.MESSAGES(sessionId), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        message: content,
-        sessionId: sessionId,
+        content: content,  // Note: backend expects 'content' not 'message'
       }),
     });
 
@@ -244,23 +374,48 @@ export default function ChatInterface() {
       throw new Error(data.error || data.details || 'Failed to get response');
     }
 
-    // Store session ID if provided
-    if (data.sessionId) {
-      sessionStorage.setItem('chatSessionId', data.sessionId);
-      setSessionId(data.sessionId);
-      console.log('Updated session ID from regular response:', data.sessionId);
-    }
+    // The backend doesn't return the session ID in this response, we already have it
+    console.log('Non-streaming message sent successfully for session:', sessionId);
 
     // Add assistant response to the chat
+    // The backend will return a message object with structure like:
+    // { id: '...', content: '...', role: 'assistant', created_at: '...', metadata: {...} }
     const assistantMessage: Message = {
-      id: data.messageId || generateMessageId(),
-      content: data.response,
-      role: 'assistant',
-      timestamp: new Date(),
-      references: data.references || [],
+      id: data.id || generateMessageId(),
+      content: data.content,
+      role: data.role || 'assistant',
+      timestamp: new Date(data.created_at || Date.now()),
+      references: [],  // References need to be fetched separately if needed
+      has_references: data.metadata?.has_references === true,
     };
 
     setMessages((prevMessages) => [...prevMessages, assistantMessage]);
+
+    // If the message has references, fetch them separately
+    if (assistantMessage.has_references && assistantMessage.id) {
+      try {
+        const refResponse = await fetch(`http://127.0.0.1:8000/chat/sessions/${sessionId}/messages/${assistantMessage.id}`);
+
+        if (refResponse.ok) {
+          const responseData = await refResponse.json();
+          // The backend returns a structure with message and references fields
+          const referencesData = responseData.references || [];
+
+          console.log(`Fetched ${referencesData.length} references for new message ${assistantMessage.id}`);
+
+          // Update this specific message with its references
+          setMessages(currentMessages =>
+            currentMessages.map(currentMsg =>
+              currentMsg.id === assistantMessage.id
+                ? { ...currentMsg, references: referencesData }
+                : currentMsg
+            )
+          );
+        }
+      } catch (refError) {
+        console.error(`Error fetching references for new message:`, refError);
+      }
+    }
   };
 
   // Add an error message when chat fails
@@ -287,10 +442,13 @@ export default function ChatInterface() {
 
   // Reset chat session
   const resetChatSession = () => {
-    // Clear session storage
-    sessionStorage.removeItem('chatSessionId');
-    // Clear state
-    setSessionId(null);
+    // Only clear session storage if we're not using a prop-provided sessionId
+    if (!propSessionId) {
+      sessionStorage.removeItem('chatSessionId');
+      setSessionId(null);
+    }
+
+    // Always clear messages and errors
     setMessages([]);
     setApiError(null);
     console.log('Chat session reset');

@@ -297,7 +297,7 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-[70vh] border rounded-lg shadow-sm bg-white">
+    <div className="flex flex-col h-[70vh] border rounded-lg shadow-sm bg-background">
       {/* API Error Banner */}
       {apiError && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4">
@@ -331,19 +331,19 @@ export default function ChatInterface() {
       )}
 
       {/* Streaming Mode Toggle */}
-      <div className="px-4 py-2 flex justify-between">
+      <div className="px-4 py-2 flex justify-between border-b">
         <div>
           {sessionId && (
             <button
               onClick={resetChatSession}
-              className="text-sm text-gray-500 hover:text-gray-700"
+              className="text-sm text-muted-foreground hover:text-foreground"
             >
               New chat
             </button>
           )}
         </div>
         <div className="flex items-center">
-          <span className="text-sm mr-2">Streaming mode:</span>
+          <span className="text-sm mr-2 text-foreground">Streaming mode:</span>
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -351,15 +351,15 @@ export default function ChatInterface() {
               checked={useStreaming}
               onChange={toggleStreamingMode}
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <div className="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
           </label>
         </div>
       </div>
 
       {/* Chat messages container */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 bg-background">
         {messages.length === 0 && !isStreaming ? (
-          <div className="h-full flex items-center justify-center text-gray-500">
+          <div className="h-full flex items-center justify-center text-muted-foreground">
             <p>Start chatting with your journal. Ask about entries, trends, or memories.</p>
           </div>
         ) : (
@@ -405,7 +405,7 @@ export default function ChatInterface() {
       </div>
 
       {/* Input area */}
-      <div className="border-t p-4">
+      <div className="border-t p-4 bg-background">
         <ChatInput onSendMessage={handleSendMessage} isLoading={loading} />
       </div>
     </div>

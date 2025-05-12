@@ -98,11 +98,12 @@ Let me start by analyzing the current plan to understand what we're working with
     - Verifiable: Markdown is rendered correctly
 
 14. **Citation UI and Theming**
-    - Clickable entry references open in new tab
-    - Show citation metadata
+    - Clickable entry references open in new tab ✓
+    - Show citation metadata ✓
     - Chat UI should match theming and layout of existing pages
-    - Verifiable: Can click references to view original entries in a new tab
-    - Verifiable: Citation metadata is accurately displayed
+    - Verifiable: Can click references to view original entries in a new tab ✓
+    - Verifiable: Citation metadata is accurately displayed ✓
+    - Verifiable: Chat shares theming and layout with existin application
 
 15. **Chat History, Session Management UI**
     - List chat sessions

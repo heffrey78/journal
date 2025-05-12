@@ -1,4 +1,8 @@
+'use client';
+
 import React from 'react';
+import MainLayout from '@/components/layout/MainLayout';
+import { cn } from '@/lib/utils';
 
 export default function ChatLayout({
   children,
@@ -6,8 +10,14 @@ export default function ChatLayout({
   children: React.ReactNode;
 }) {
   return (
-    <section className="w-full max-w-6xl mx-auto">
-      {children}
-    </section>
+    <MainLayout>
+      <div className={cn(
+        'h-full w-full',
+        'flex flex-col',
+        'px-4 py-6'
+      )}>
+        {children}
+      </div>
+    </MainLayout>
   );
 }

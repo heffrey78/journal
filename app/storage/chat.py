@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from app.models import ChatSession, ChatMessage, ChatConfig, EntryReference
 from app.storage.base import BaseStorage
@@ -179,13 +179,25 @@ class ChatStorage(BaseStorage):
         finally:
             conn.close()
 
-    def list_sessions(self, limit: int = 10, offset: int = 0) -> List[ChatSession]:
+    def list_sessions(
+        self,
+        limit: int = 10,
+        offset: int = 0,
+        sort_by: str = "last_accessed",
+        sort_order: str = "desc",
+    ) -> List[ChatSession]:
         """
-        List chat sessions with pagination.
+        List chat sessions with pagination and sorting options.
 
         Args:
             limit: Maximum number of sessions to return
             offset: Number of sessions to skip
+            sort_by: Field to sort by (
+            'last_accessed',
+            'updated_at',
+            'created_at',
+            'title')
+            sort_order: Sort order ('asc' or 'desc')
 
         Returns:
             List of ChatSession objects
@@ -193,13 +205,26 @@ class ChatStorage(BaseStorage):
         conn = self.get_db_connection()
         cursor = conn.cursor()
 
+        # Validate sort parameters to prevent SQL injection
+        allowed_sort_fields = [
+            "last_accessed",
+            "updated_at",
+            "created_at",
+            "title",
+            "entry_count",
+        ]
+        if sort_by not in allowed_sort_fields:
+            sort_by = "last_accessed"  # Default to last_accessed if invalid
+
+        sort_direction = "DESC" if sort_order.lower() == "desc" else "ASC"
+
         try:
             cursor.execute(
-                """
+                f"""
                 SELECT id, title, created_at, updated_at, last_accessed,
                        context_summary, temporal_filter, entry_count
                 FROM chat_sessions
-                ORDER BY last_accessed DESC
+                ORDER BY {sort_by} {sort_direction}
                 LIMIT ? OFFSET ?
                 """,
                 (limit, offset),
@@ -876,5 +901,96 @@ class ChatStorage(BaseStorage):
             conn.rollback()
             return False
 
+        finally:
+            conn.close()
+
+    def get_session_stats(self, session_id: str) -> Dict[str, Any]:
+        """
+        Get statistics for a specific chat session.
+
+        Args:
+            session_id: The chat session ID
+
+        Returns:
+            Dictionary with message count, unique entry references, etc.
+        """
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Get total message count
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM chat_messages
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            )
+            total_count = cursor.fetchone()[0]
+
+            # Get message counts by role
+            cursor.execute(
+                """
+                SELECT role, COUNT(*)
+                FROM chat_messages
+                WHERE session_id = ?
+                GROUP BY role
+                """,
+                (session_id,),
+            )
+
+            role_counts = {role: count for role, count in cursor.fetchall()}
+            user_count = role_counts.get("user", 0)
+            assistant_count = role_counts.get("assistant", 0)
+
+            # Get reference count
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT e.entry_id)
+                FROM chat_message_entries e
+                JOIN chat_messages m ON e.message_id = m.id
+                WHERE m.session_id = ?
+                """,
+                (session_id,),
+            )
+            reference_count = cursor.fetchone()[0]
+
+            # Get the last message preview
+            cursor.execute(
+                """
+                SELECT content
+                FROM chat_messages
+                WHERE session_id = ? AND role = 'assistant'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            )
+            last_message_row = cursor.fetchone()
+            last_message = last_message_row[0] if last_message_row else ""
+
+            # Create preview (first ~100 chars)
+            message_preview = last_message[:100] + (
+                "..." if len(last_message) > 100 else ""
+            )
+
+            return {
+                "message_count": total_count,
+                "user_message_count": user_count,
+                "assistant_message_count": assistant_count,
+                "reference_count": reference_count,
+                "last_message_preview": message_preview,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get session stats: {str(e)}")
+            return {
+                "message_count": 0,
+                "user_message_count": 0,
+                "assistant_message_count": 0,
+                "reference_count": 0,
+                "last_message_preview": "",
+            }
         finally:
             conn.close()

@@ -119,21 +119,30 @@ async def create_chat_session(
 async def list_chat_sessions(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    sort_by: str = Query(
+        "last_accessed",
+        description="Field to sort by (last_accessed, updated_at, created_at, title)",
+    ),
+    sort_order: str = Query("desc", description="Sort order (asc or desc)"),
     storage=Depends(get_storage),
 ) -> List[ChatSession]:
     """
-    List existing chat sessions with pagination.
+    List existing chat sessions with pagination and sorting.
 
     Args:
         limit: Maximum number of sessions to return
         offset: Number of sessions to skip
+        sort_by: Field to sort by
+        sort_order: Sort order ('asc' or 'desc')
 
     Returns:
-        List of ChatSession objects sorted by last_accessed (most recent first)
+        List of ChatSession objects sorted according to parameters
     """
     try:
         chat_storage = ChatStorage(storage.base_dir)
-        sessions = chat_storage.list_sessions(limit, offset)
+        sessions = chat_storage.list_sessions(
+            limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order
+        )
         return sessions
     except Exception as e:
         logger.error(f"Failed to list chat sessions: {str(e)}")
@@ -849,4 +858,41 @@ async def clear_session_summary(
         logger.error(f"Failed to clear session summary: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to clear session summary: {str(e)}"
+        )
+
+
+@chat_router.get("/sessions/{session_id}/stats", response_model=Dict[str, Any])
+async def get_session_stats(
+    session_id: str = Path(..., description="The ID of the session to get stats for"),
+    storage=Depends(get_storage),
+) -> Dict[str, Any]:
+    """
+    Get statistics for a specific chat session.
+
+    Args:
+        session_id: The chat session ID
+
+    Returns:
+        Dictionary with message count, unique entry references, etc.
+    """
+    try:
+        chat_storage = ChatStorage(storage.base_dir)
+
+        # First check if the session exists
+        session = chat_storage.get_session(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=404, detail=f"Chat session {session_id} not found"
+            )
+
+        # Get the stats
+        stats = chat_storage.get_session_stats(session_id)
+        return stats
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get session stats: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get session stats: {str(e)}"
         )

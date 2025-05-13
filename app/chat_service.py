@@ -81,9 +81,17 @@ class ChatService:
         # Add the new message to history
         conversation_history.append({"role": "user", "content": message.content})
 
-        # Generate response using LLM
+        # Check for model override in message metadata, use session model as fallback
+        model_name = None
+        if message.metadata and "model_override" in message.metadata:
+            model_name = message.metadata["model_override"]
+            logger.info(f"Using model override from message: {model_name}")
+        elif session.model_name:
+            model_name = session.model_name
+            logger.info(f"Using model from session: {model_name}")
+
         response_text = self._generate_response(
-            conversation_history, references, session, config
+            conversation_history, references, session, config, model_name
         )
 
         # Create and save assistant message
@@ -351,6 +359,7 @@ class ChatService:
         references: List[EntryReference],
         session: ChatSession,
         config: ChatConfig,
+        model_name: Optional[str] = None,
     ) -> str:
         """
         Generate a response using the LLM.
@@ -386,9 +395,11 @@ class ChatService:
                         )
                         break
 
-            # Generate response using the LLM service
+            # Generate response using the LLM service with optional model override
             response = self.llm_service.chat_completion(
-                messages=conversation, temperature=config.temperature
+                messages=conversation,
+                temperature=config.temperature,
+                model=model_name,  # Use session-specific model if provided
             )
 
             # Extract the response text

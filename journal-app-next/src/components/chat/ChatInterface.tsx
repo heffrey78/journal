@@ -3,9 +3,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
+import ModelSelector from './ModelSelector';
 import { Message, EntryReference } from './types';
 import { AlertCircle } from 'lucide-react';
-import { CHAT_API } from '@/config/api';
+import { CHAT_API, CONFIG_API } from '@/config/api';
 
 interface ChatInterfaceProps {
   sessionId?: string;
@@ -23,6 +24,9 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
   const [useStreaming, setUseStreaming] = useState<boolean>(true);
   // Session state that can be provided via prop or stored in sessionStorage
   const [sessionId, setSessionId] = useState<string | null>(propSessionId || null);
+  // Model selection state
+  const [setDefaultModel] = useState<string | null>(null);
+  const [currentSessionModel, setCurrentSessionModel] = useState<string | null>(null);
 
   // React to changes in session ID (from props or storage)
   useEffect(() => {
@@ -51,6 +55,33 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       }
     }
   }, [propSessionId, sessionId]);
+
+  // Load default LLM configuration
+  useEffect(() => {
+    const fetchDefaultModel = async () => {
+      try {
+        const response = await fetch(CONFIG_API.LLM);
+
+        if (response.ok) {
+          const config = await response.json();
+          if (config && config.model_name) {
+            setDefaultModel(config.model_name);
+            // Only set current session model if it's not already set
+            if (!currentSessionModel) {
+              setCurrentSessionModel(config.model_name);
+            }
+          }
+        } else {
+          console.error('Failed to fetch LLM configuration');
+        }
+      } catch (error) {
+        console.error('Error fetching LLM configuration:', error);
+      }
+    };
+
+    fetchDefaultModel();
+  }, [currentSessionModel]);
+
    // Load messages when session ID changes
   useEffect(() => {
     const loadMessages = async () => {
@@ -235,17 +266,21 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
   // Stream chat response using EventSource
   const streamChatResponse = async (content: string) => {
+    if (!sessionId) {
+      throw new Error('Session ID is required for streaming');
+    }
+
     try {
       setIsStreaming(true);
       // Connect directly to backend streaming endpoint
-      const response = await fetch(CHAT_API.STREAM, {
+      const response = await fetch(CHAT_API.STREAM(sessionId), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: content,
-          session_id: sessionId,  // Note: backend expects snake_case
+          content: content,  // Backend expects 'content' not 'message'
+          model_name: currentSessionModel, // Include current model if set
         }),
       });
 
@@ -357,6 +392,10 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
   // Send a non-streaming message (fallback or direct use)
   const sendNonStreamingMessage = async (content: string) => {
+    if (!sessionId) {
+      throw new Error('Session ID is required');
+    }
+
     // Connect directly to backend non-streaming endpoint
     const response = await fetch(CHAT_API.MESSAGES(sessionId), {
       method: 'POST',
@@ -365,6 +404,7 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       },
       body: JSON.stringify({
         content: content,  // Note: backend expects 'content' not 'message'
+        model_name: currentSessionModel, // Include current model if set
       }),
     });
 
@@ -389,12 +429,10 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       has_references: data.metadata?.has_references === true,
     };
 
-    setMessages((prevMessages) => [...prevMessages, assistantMessage]);
-
-    // If the message has references, fetch them separately
-    if (assistantMessage.has_references && assistantMessage.id) {
+    setMessages((prevMessages) => [...prevMessages, assistantMessage]);    // If the message has references, fetch them separately
+    if (assistantMessage.has_references && assistantMessage.id && sessionId) {
       try {
-        const refResponse = await fetch(`http://127.0.0.1:8000/chat/sessions/${sessionId}/messages/${assistantMessage.id}`);
+        const refResponse = await fetch(CHAT_API.MESSAGE(sessionId, assistantMessage.id));
 
         if (refResponse.ok) {
           const responseData = await refResponse.json();
@@ -433,6 +471,13 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
   // Clear error and try again
   const tryAgain = () => {
     setApiError(null);
+  };
+
+  // Handle model change
+  const handleModelChange = (model: string) => {
+    setCurrentSessionModel(model);
+    // Note: This only affects the current session, not the default model
+    console.log(`Changed model for current session to: ${model}`);
   };
 
   // Toggle between streaming and non-streaming mode
@@ -500,7 +545,17 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
             </button>
           )}
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center space-x-4">
+          {/* Model Selector */}
+          {sessionId &&
+            <div className="flex items-center">
+              <ModelSelector
+                currentModel={currentSessionModel}
+                onModelChange={handleModelChange}
+                disabled={loading || isStreaming}
+              />
+            </div>
+          }
           <span className="text-sm mr-2 text-foreground">Streaming mode:</span>
           <label className="relative inline-flex items-center cursor-pointer">
             <input

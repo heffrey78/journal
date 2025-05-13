@@ -11,5 +11,11 @@ export const CHAT_API = {
   SESSION: (sessionId: string) => `${API_BASE_URL}/chat/sessions/${sessionId}`,
   MESSAGES: (sessionId: string) => `${API_BASE_URL}/chat/sessions/${sessionId}/messages`,
   MESSAGE: (sessionId: string, messageId: string) => `${API_BASE_URL}/chat/sessions/${sessionId}/messages/${messageId}`,
-  STREAM: `${API_BASE_URL}/chat/stream`
+  STREAM: (sessionId: string) => `${API_BASE_URL}/chat/sessions/${sessionId}/stream`
+};
+
+// Config-related endpoints
+export const CONFIG_API = {
+  LLM: `${API_BASE_URL}/config/llm`,
+  AVAILABLE_MODELS: `${API_BASE_URL}/config/available-models`
 };

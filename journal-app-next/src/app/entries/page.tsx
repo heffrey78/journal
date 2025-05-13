@@ -14,13 +14,21 @@ export default function EntriesPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const entriesPerPage = 10;
 
   useEffect(() => {
     const fetchEntries = async () => {
       try {
         setLoading(true);
-        const data = await entriesApi.getEntries();
+        const data = await entriesApi.getEntries({
+          limit: entriesPerPage,
+          offset: currentPage * entriesPerPage
+        });
         setEntries(data);
+        // If we get fewer results than the requested limit, there are no more entries
+        setHasMore(data.length === entriesPerPage);
       } catch (err) {
         console.error('Failed to fetch entries:', err);
         setError('Failed to load entries. Please try again later.');
@@ -30,7 +38,19 @@ export default function EntriesPage() {
     };
 
     fetchEntries();
-  }, []);
+  }, [currentPage]);
+
+  const handlePreviousPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (hasMore) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
 
   return (
     <MainLayout>
@@ -52,7 +72,30 @@ export default function EntriesPage() {
               {error}
             </div>
           ) : (
-            <EntryList entries={entries} />
+            <>
+              <EntryList entries={entries} />
+
+              {/* Pagination Controls */}
+              <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-gray-800">
+                <Button
+                  variant="outline"
+                  onClick={handlePreviousPage}
+                  disabled={currentPage === 0}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Page {currentPage + 1}
+                </span>
+                <Button
+                  variant="outline"
+                  onClick={handleNextPage}
+                  disabled={!hasMore}
+                >
+                  Next
+                </Button>
+              </div>
+            </>
           )}
         </ContentPadding>
       </Container>

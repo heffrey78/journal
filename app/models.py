@@ -258,6 +258,7 @@ class ChatSession(BaseModel):
     context_summary: Optional[str] = None
     temporal_filter: Optional[str] = None
     entry_count: int = 0
+    model_name: Optional[str] = None
 
     class Config:
         """Pydantic config options"""

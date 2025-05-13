@@ -20,7 +20,14 @@ const FolderSidebar: React.FC = () => {
       try {
         setLoading(true);
         const data = await organizationApi.getFolders();
-        setFolders(data);
+
+        // Filter out any empty folder names
+        const validFolders = data.filter(folder => folder && folder.trim().length > 0);
+
+        // Sort the folders alphabetically and add the root folder at the top
+        const sortedFolders = [...validFolders].sort((a, b) => a.localeCompare(b));
+        setFolders(['..', ...sortedFolders]); // Add root folder as ".." at the top
+
         setError(null);
       } catch (err) {
         console.error('Failed to fetch folders:', err);
@@ -121,7 +128,7 @@ const FolderSidebar: React.FC = () => {
                       folders.map((folder) => (
                         <li key={folder} className="list-none">
                           <Link
-                            href={`/folders/${encodeURIComponent(folder)}`}
+                            href={folder === '..' ? '/entries' : `/folders/${encodeURIComponent(folder)}`}
                             className="flex items-center py-2 px-3 rounded-md hover:bg-accent hover:text-accent-foreground"
                           >
                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

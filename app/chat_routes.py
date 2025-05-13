@@ -27,6 +27,7 @@ class ChatSessionCreate(BaseModel):
 
     title: Optional[str] = None
     temporal_filter: Optional[str] = None
+    model_name: Optional[str] = None
 
 
 class ChatSessionUpdate(BaseModel):
@@ -43,6 +44,7 @@ class ChatMessageCreate(BaseModel):
     content: str = Field(
         ..., min_length=1, description="The message content (cannot be empty)"
     )
+    model_name: Optional[str] = None  # Optional model override for this message
 
     @validator("content")
     def content_not_empty(cls, v):
@@ -101,6 +103,7 @@ async def create_chat_session(
             updated_at=now,
             last_accessed=now,
             temporal_filter=session_data.temporal_filter,
+            model_name=session_data.model_name,
         )
 
         # Save in database
@@ -360,6 +363,10 @@ async def add_message(
             role="user",
             content=message_data.content,
             created_at=datetime.now(),
+            # Store model_name in metadata if provided
+            metadata={"model_override": message_data.model_name}
+            if message_data.model_name
+            else {},
         )
 
         # Save the message
@@ -616,6 +623,10 @@ async def process_user_message(
             role="user",
             content=message_data.content,
             created_at=datetime.now(),
+            # Store model_name in metadata if provided
+            metadata={"model_override": message_data.model_name}
+            if message_data.model_name
+            else {},
         )
 
         # Save the user message
@@ -679,6 +690,10 @@ async def stream_user_message(
             role="user",
             content=message_data.content,
             created_at=datetime.now(),
+            # Store model_name in metadata if provided
+            metadata={"model_override": message_data.model_name}
+            if message_data.model_name
+            else {},
         )
 
         # Save the user message

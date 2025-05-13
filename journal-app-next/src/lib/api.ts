@@ -84,8 +84,23 @@ export interface LLMConfig {
 // API functions for entries
 export const entriesApi = {
   // Get all entries
-  getEntries: async (): Promise<JournalEntry[]> => {
-    const response = await api.get('/entries');
+  getEntries: async (params?: {
+    limit?: number;
+    offset?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    tag?: string;
+  }): Promise<JournalEntry[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.dateFrom) queryParams.append('date_from', params.dateFrom);
+    if (params?.dateTo) queryParams.append('date_to', params.dateTo);
+    if (params?.tag) queryParams.append('tag', params.tag);
+
+    const queryString = queryParams.toString();
+    const url = `/entries/${queryString ? `?${queryString}` : ''}`;
+    const response = await api.get(url);
     return response.data;
   },
 

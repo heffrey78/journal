@@ -846,20 +846,10 @@ async def update_llm_config(
 
 @app.get("/config/available-models", tags=["config"])
 async def get_available_models():
-    """Get list of available Ollama models"""
+    """Get list of available LLM models from Ollama"""
     try:
-        import ollama
-
-        # The Ollama Python library returns a ListResponse object
-        response = ollama.list()
-
-        # Extract model names using the correct attributes
-        model_names = []
-        for model in response.models:
-            # The model name is in the 'model' attribute, not 'name'
-            model_names.append(model.model)
-
-        return {"models": model_names}
+        models = llm_service.get_available_models()
+        return models
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve available models: {str(e)}"

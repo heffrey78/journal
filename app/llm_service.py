@@ -1041,6 +1041,7 @@ class LLMService:
         temperature: float = None,
         max_tokens: int = None,
         stream: bool = False,
+        model: Optional[str] = None,
     ) -> Union[Dict[str, Any], Iterator[Dict[str, Any]]]:
         """
         Generate a chat completion response using Ollama.
@@ -1063,12 +1064,16 @@ class LLMService:
             temp = temperature if temperature is not None else self.temperature
             tokens = max_tokens if max_tokens is not None else self.max_tokens
 
-            # Call Ollama for chat completion
+            # Call Ollama for chat completion - use specified model or default
+            model_to_use = model or self.model_name
+
             if stream:
-                return self._stream_chat_completion(messages, temp, tokens)
+                return self._stream_chat_completion(
+                    messages, temp, tokens, model_to_use
+                )
             else:
                 response = ollama.chat(
-                    model=self.model_name,
+                    model=model_to_use,
                     messages=messages,
                     options={"temperature": temp, "num_predict": tokens},
                 )
@@ -1079,7 +1084,11 @@ class LLMService:
             raise LLMServiceError(f"Failed to generate chat completion: {e}")
 
     def _stream_chat_completion(
-        self, messages: List[Dict[str, str]], temperature: float, max_tokens: int
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
     ) -> Iterator[str]:
         """
         Stream a chat completion response from Ollama.
@@ -1099,9 +1108,11 @@ class LLMService:
         import json
 
         try:
-            # Prepare the request payload
+            # Prepare the request payload - use specified model or default
+            model_to_use = model or self.model_name
+
             data = {
-                "model": self.model_name,
+                "model": model_to_use,
                 "messages": messages,
                 "stream": True,
                 "options": {"temperature": temperature, "num_predict": max_tokens},
@@ -1141,3 +1152,60 @@ class LLMService:
         except Exception as e:
             logger.error(f"Streaming chat completion failed: {e}")
             raise LLMServiceError(f"Failed to stream chat completion: {e}")
+
+    def get_available_models(self):
+        """
+        Get a list of available models from Ollama.
+
+        Returns:
+            List of model names that can be used for text generation
+
+        Raises:
+            OllamaConnectionError: If connection to Ollama fails
+        """
+        try:
+            # Try to get the list of models from Ollama
+            response = ollama.list()
+
+            # Extract just the model names from the response
+            models = [model["name"] for model in response["models"]]
+
+            # Sort the model names for consistent presentation
+            models.sort()
+
+            return models
+        except Exception as e:
+            logger.error(f"Failed to retrieve available models: {e}")
+            raise OllamaConnectionError(f"Failed to get available models: {e}")
+
+    def generate_response_with_model(self, messages, model_name=None):
+        """
+        Generate a response using a specific model.
+
+        Args:
+            messages: List of message objects with 'role' and 'content'
+            model_name: Name of the model to use (defaults to configured model_name)
+
+        Returns:
+            Text of the generated response
+
+        Raises:
+            OllamaConnectionError: If connection to Ollama fails
+        """
+        try:
+            # Use the provided model_name or fall back to the default
+            model = model_name or self.model_name
+
+            response = ollama.chat(
+                model=model,
+                messages=messages,
+                options={
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens,
+                },
+            )
+
+            return response["message"]["content"]
+        except Exception as e:
+            logger.error(f"Failed to generate response with model {model_name}: {e}")
+            raise OllamaConnectionError(f"Failed to generate response: {e}")

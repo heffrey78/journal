@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor';
-import Button from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { entriesApi, organizationApi } from '@/lib/api';
 import { CreateJournalEntryInput } from '@/lib/types';
 import { FolderIcon } from '@heroicons/react/24/outline';

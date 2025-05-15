@@ -6,7 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor';
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 import EntryAnalysis from '@/components/entries/EntryAnalysis'; // Import the EntryAnalysis component
-import Button from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { entriesApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import { format } from 'date-fns';

@@ -8,7 +8,7 @@ import { batchAnalysisApi } from '@/lib/api';
 import { BatchAnalysis } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { ChartBarIcon, DocumentTextIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ChartBarIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -38,7 +38,7 @@ export default function AnalysesPage() {
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), 'MMM d, yyyy');
-    } catch (e) {
+    } catch {
       return 'Unknown date';
     }
   };
@@ -96,9 +96,9 @@ export default function AnalysesPage() {
             <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
               Select multiple entries from your journal to create your first batch analysis.
             </p>
-            <Button asChild>
-              <Link href="/entries">Browse Entries</Link>
-            </Button>
+            <Link href="/entries" className="inline-block">
+              <Button>Browse Entries</Button>
+            </Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
-import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import LLMSettings from '@/components/settings/LLMSettings';
 import ThemeSettings from '@/components/theme/ThemeSettings';
 import { AppSettings } from '@/lib/types';

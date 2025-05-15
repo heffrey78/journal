@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import MainLayout from '@/components/layout/MainLayout';
 import EntryList from '@/components/entries/EntryList';
-import Button from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { entriesApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import Container from '@/components/layout/Container';

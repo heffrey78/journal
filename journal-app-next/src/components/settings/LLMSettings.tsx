@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LLMConfig, PromptType } from '@/lib/types';
 import { llmApi } from '@/lib/api';
-import Button from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 
 // Default LLM configuration
 const defaultLLMConfig: LLMConfig = {

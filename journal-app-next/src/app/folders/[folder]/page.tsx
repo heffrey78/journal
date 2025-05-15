@@ -9,7 +9,7 @@ import { JournalEntry } from '@/lib/types';
 import { PlusIcon } from '@heroicons/react/24/outline';
 import Container from '@/components/layout/Container';
 import ContentPadding from '@/components/layout/ContentPadding';
-import Button from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 
 export default function FolderPage() {
   const params = useParams();

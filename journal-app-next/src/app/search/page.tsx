@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import EntryList from '@/components/entries/EntryList';
-import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { searchApi, tagsApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import Container from '@/components/layout/Container';
@@ -231,7 +231,7 @@ export default function SearchPage() {
                     <Button
                       type="submit"
                       isLoading={isSearching}
-                      fullWidth
+                      className="w-full"
                     >
                       Search with Filters
                     </Button>

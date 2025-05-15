@@ -25,6 +25,7 @@ from app.storage import StorageManager
 from app.llm_service import LLMService, EntrySummary, BatchAnalysisError
 from app.organization_routes import organization_router
 from app.chat_routes import chat_router
+from app.config_routes import config_router
 from app.utils import get_storage, get_llm_service
 
 # Import from utils module# Configure logging
@@ -43,6 +44,9 @@ app.include_router(organization_router)
 
 # Include the chat router
 app.include_router(chat_router)
+
+# Include the config router
+app.include_router(config_router)
 
 # Add CORS middleware
 app.add_middleware(
@@ -841,18 +845,6 @@ async def update_llm_config(
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500, detail=f"Failed to update LLM configuration: {str(e)}"
-        )
-
-
-@app.get("/config/available-models", tags=["config"])
-async def get_available_models():
-    """Get list of available LLM models from Ollama"""
-    try:
-        models = llm_service.get_available_models()
-        return models
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve available models: {str(e)}"
         )
 
 

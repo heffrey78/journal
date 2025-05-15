@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Any
 
 from app.llm_service import LLMService
-from app.dependencies import get_llm_service
+from app.utils import get_llm_service
 
 logger = logging.getLogger(__name__)
 

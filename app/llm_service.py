@@ -100,6 +100,15 @@ class LLMService:
         # Verify Ollama connection on initialization
         self._verify_ollama_connection()
 
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get the current LLM configuration.
+
+        Returns:
+            Dictionary with LLM configuration settings
+        """
+        return self.config.dict()
+
     def reload_config(self):
         """
         Reload configuration from storage.

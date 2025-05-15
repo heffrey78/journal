@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
-import MarkdownEditor from '@/components/markdown/MarkdownEditor';
+import AdvancedMarkdownEditor from '@/components/markdown/AdvancedMarkdownEditor';
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 import EntryAnalysis from '@/components/entries/EntryAnalysis'; // Import the EntryAnalysis component
 import { Button } from '@/components/ui/button';
@@ -152,13 +152,13 @@ export default function EntryDetailPage() {
                     Edit
                   </Button>
                   <Button
-                    variant={entry.favorite ? 'primary' : 'outline'}
+                    variant={entry.favorite ? 'default' : 'outline'}
                     onClick={handleToggleFavorite}
                     className={entry.favorite ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
                   >
                     {entry.favorite ? 'Favorited' : 'Favorite'}
                   </Button>
-                  <Button variant="danger" onClick={handleDelete}>
+                  <Button variant="destructive" onClick={handleDelete}>
                     Delete
                   </Button>
                 </div>
@@ -180,7 +180,7 @@ export default function EntryDetailPage() {
               </div>
 
               <div className="bg-card text-card-foreground rounded-lg shadow-md p-6 mb-6">
-                <MarkdownRenderer content={entry.content} />
+                <MarkdownRenderer content={entry.content} className="markdown-enhanced" />
               </div>
 
               {entry.tags && entry.tags.length > 0 && (
@@ -209,7 +209,12 @@ export default function EntryDetailPage() {
               </div>
             </>
           ) : (
-            <form className="space-y-6">
+            <form 
+              className="space-y-6" 
+              onSubmit={(e) => {
+                e.preventDefault(); // Prevent default form submission
+              }}
+            >
               <div>
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Title
@@ -229,10 +234,11 @@ export default function EntryDetailPage() {
                   Content
                 </label>
                 <div className="prose-wrapper">
-                  <MarkdownEditor
+                  <AdvancedMarkdownEditor
                     value={content}
                     onChange={setContent}
                     entryId={id}
+                    height="600px"
                   />
                 </div>
               </div>

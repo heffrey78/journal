@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import MainLayout from '@/components/layout/MainLayout';
-import MarkdownEditor from '@/components/markdown/MarkdownEditor';
+import AdvancedMarkdownEditor from '@/components/markdown/AdvancedMarkdownEditor';
 import { Button } from '@/components/ui/button';
 import { entriesApi, organizationApi } from '@/lib/api';
 import { CreateJournalEntryInput } from '@/lib/types';
@@ -41,8 +41,7 @@ export default function NewEntryPage() {
     fetchFolders();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
 
@@ -115,7 +114,13 @@ export default function NewEntryPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault(); // Prevent default form submission
+              handleSubmit();
+            }} 
+            className="space-y-6"
+          >
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Title
@@ -135,12 +140,13 @@ export default function NewEntryPage() {
                 Content
               </label>
               <div className="prose-wrapper">
-                <MarkdownEditor
+                <AdvancedMarkdownEditor
                   value={content}
                   onChange={setContent}
                   placeholder="Write your journal entry here..."
                   autofocus
-                  entryId={createdEntryId || undefined}
+                  entryId={createdEntryId ?? undefined}
+                  height="600px"
                 />
               </div>
             </div>

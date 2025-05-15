@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -65,10 +63,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={{
           // Custom image renderer
-          img: (props) => {
-            // Using a functional component to handle state properly
-            return <MarkdownImage src={props.src as string} alt={props.alt} />;
-          },
+          img: (props) => <MarkdownImage src={props.src as string} alt={props.alt} />,
           
           // Custom link renderer
           a: ({ href, children, ...props }) => (

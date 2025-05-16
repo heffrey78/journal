@@ -18,6 +18,16 @@ interface AdvancedMarkdownEditorProps {
   height?: string;
 }
 
+// Helper function to get view mode text
+const getViewModeText = (mode: 'split' | 'editor' | 'preview'): string => {
+  switch (mode) {
+    case 'split': return ' Split View';
+    case 'editor': return ' Editor View';
+    case 'preview': return ' Preview View';
+    default: return ' Split View';
+  }
+};
+
 export default function AdvancedMarkdownEditor({
   value,
   onChange,
@@ -29,8 +39,6 @@ export default function AdvancedMarkdownEditor({
   height = '500px'
 }: AdvancedMarkdownEditorProps) {
   const [showImageBrowser, setShowImageBrowser] = useState(false);
-  const [editorScrollTop, setEditorScrollTop] = useState(0);
-  const [previewScrollTop, setPreviewScrollTop] = useState(0);
   const [syncScrolling, setSyncScrolling] = useState(true);
   const [currentPreviewMode, setCurrentPreviewMode] = useState<'split' | 'editor' | 'preview'>(
     showPreview ? 'split' : 'editor'
@@ -38,6 +46,8 @@ export default function AdvancedMarkdownEditor({
   
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  // Ref to track when we're programmatically scrolling to prevent feedback loops
+  const isScrollingRef = useRef(false);
   
   // Debounced value for preview updates
   const debouncedValue = useDebounce(value, 100);
@@ -53,19 +63,47 @@ export default function AdvancedMarkdownEditor({
     setCurrentPreviewMode(showPreview ? 'split' : 'editor');
   }, [showPreview]);
 
-  // Synchronized scrolling
+  // Improved synchronized scrolling with adjusted proportional scrolling
   const handleEditorScroll = useCallback(() => {
     if (!syncScrolling || !editorRef.current || !previewRef.current) return;
     
     const editor = editorRef.current;
     const preview = previewRef.current;
     
-    const scrollPercentage = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
-    const previewScrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight);
+    // Skip if we're handling a programmatic scroll
+    if (isScrollingRef.current) return;
     
-    setEditorScrollTop(editor.scrollTop);
-    setPreviewScrollTop(previewScrollTop);
-    preview.scrollTop = previewScrollTop;
+    try {
+      isScrollingRef.current = true;
+      
+      // Calculate the fraction of the document we've scrolled through
+      const scrollFraction = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+      
+      // Apply smoothing for bottom of the document
+      // This helps with alignment toward the end of the document where the differences are most noticeable
+      let adjustedFraction = scrollFraction;
+      
+      // More aggressive adjustment near the bottom
+      if (scrollFraction > 0.85) {
+        // Gradually increase the scroll position as we get closer to the bottom
+        // This counteracts the typical issue where preview content is taller
+        const bottomFactor = (scrollFraction - 0.85) / 0.15; // 0 at 85%, 1 at 100%
+        adjustedFraction = scrollFraction + (bottomFactor * 0.1); // Add up to 10% more scroll
+        adjustedFraction = Math.min(adjustedFraction, 1); // Cap at 1
+      }
+      
+      // Apply the adjusted scroll position
+      const previewScrollTop = adjustedFraction * (preview.scrollHeight - preview.clientHeight);
+      
+      setEditorScrollTop(editor.scrollTop);
+      setPreviewScrollTop(previewScrollTop);
+      preview.scrollTop = previewScrollTop;
+    } finally {
+      // Release the scroll lock after a short delay
+      setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 50);
+    }
   }, [syncScrolling]);
 
   const handlePreviewScroll = useCallback(() => {
@@ -74,12 +112,36 @@ export default function AdvancedMarkdownEditor({
     const editor = editorRef.current;
     const preview = previewRef.current;
     
-    const scrollPercentage = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
-    const editorScrollTop = scrollPercentage * (editor.scrollHeight - editor.clientHeight);
+    // Skip if we're handling a programmatic scroll
+    if (isScrollingRef.current) return;
     
-    setPreviewScrollTop(preview.scrollTop);
-    setEditorScrollTop(editorScrollTop);
-    editor.scrollTop = editorScrollTop;
+    try {
+      isScrollingRef.current = true;
+      
+      // Calculate the fraction of the document we've scrolled through
+      const scrollFraction = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+      
+      // Apply a reverse adjustment for the editor
+      let adjustedFraction = scrollFraction;
+      
+      // Adjust for the bottom of the document
+      if (scrollFraction > 0.85) {
+        const bottomFactor = (scrollFraction - 0.85) / 0.15;
+        adjustedFraction = scrollFraction - (bottomFactor * 0.1); // Subtract up to 10%
+        adjustedFraction = Math.max(adjustedFraction, 0);
+      }
+      
+      const editorScrollTop = adjustedFraction * (editor.scrollHeight - editor.clientHeight);
+      
+      setPreviewScrollTop(preview.scrollTop);
+      setEditorScrollTop(editorScrollTop);
+      editor.scrollTop = editorScrollTop;
+    } finally {
+      // Release the scroll lock after a short delay
+      setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 50);
+    }
   }, [syncScrolling]);
 
   // Toolbar actions

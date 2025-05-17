@@ -1,5 +1,10 @@
 import axios from 'axios';
-import type { BatchAnalysis, BatchAnalysisRequest, BatchAnalysisSummary } from './types';
+import type {
+  BatchAnalysis,
+  BatchAnalysisRequest,
+  BatchAnalysisSummary,
+  ImportResult
+} from './types';
 
 // Configure base URL for API requests
 const api = axios.create({
@@ -147,6 +152,48 @@ export const entriesApi = {
   // Get favorite summaries for an entry
   getFavoriteSummaries: async (id: string): Promise<EntrySummary[]> => {
     const response = await api.get(`/entries/${id}/summaries/favorite`);
+    return response.data;
+  },
+
+  // Import files as entries
+  importFiles: async (
+    files: File[],
+    options?: { tags?: string[], folder?: string, useFileDates?: boolean, customTitle?: string }
+  ): Promise<ImportResult> => {
+    const formData = new FormData();
+
+    // Add all files
+    files.forEach(file => {
+      formData.append('files', file);
+    });
+
+    // Add optional parameters
+    if (options?.tags && options.tags.length > 0) {
+      formData.append('tags', options.tags.join(','));
+    }
+
+    if (options?.folder) {
+      formData.append('folder', options.folder);
+    }
+
+    // Add use_file_dates parameter
+    if (options?.useFileDates !== undefined) {
+      formData.append('use_file_dates', options.useFileDates ? 'true' : 'false');
+    }
+
+    // Add custom title parameter
+    if (options?.customTitle) {
+      formData.append('custom_title', options.customTitle);
+    }
+
+    // Use custom config for multipart form data
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+
+    const response = await api.post('/entries/import', formData, config);
     return response.data;
   },
 };

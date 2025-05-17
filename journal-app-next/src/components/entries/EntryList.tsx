@@ -20,6 +20,7 @@ interface EntryListProps {
   showAnalysisAction?: boolean;  // New prop for batch analysis
   currentFolder?: string;
   onAnalysisComplete?: (analysis: BatchAnalysis) => void;  // Optional callback when analysis completes
+  headerButtons?: React.ReactNode;  // New prop to receive buttons from the parent component
 }
 
 const EntryList: React.FC<EntryListProps> = ({
@@ -28,7 +29,8 @@ const EntryList: React.FC<EntryListProps> = ({
   showMoveAction = false,
   showAnalysisAction = true,  // Enable by default
   currentFolder,
-  onAnalysisComplete
+  onAnalysisComplete,
+  headerButtons
 }) => {
   const router = useCompatRouter();
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
@@ -47,7 +49,7 @@ const EntryList: React.FC<EntryListProps> = ({
     try {
       const date = new Date(dateString);
       return format(date, 'MMM d, yyyy h:mm a');
-    } catch (e) {
+    } catch {
       return dateString;
     }
   };
@@ -140,7 +142,7 @@ const EntryList: React.FC<EntryListProps> = ({
   };
 
   // Handle batch analysis
-  const handleAnalyzeEntries = async (request: BatchAnalysisRequest) => {
+  const handleAnalyzeEntries = async (request: BatchAnalysisRequest): Promise<BatchAnalysis | undefined> => {
     if (selectedEntries.length === 0) return;
 
     try {
@@ -195,86 +197,96 @@ const EntryList: React.FC<EntryListProps> = ({
 
   return (
     <div>
-      {/* Action Bar */}
-      {(showMoveAction || showAnalysisAction) && (
-        <div className="mb-4 flex flex-wrap justify-between items-center gap-2">
-          {selectionMode ? (
-            <>
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={toggleSelectAll}
-                  variant="outline"
-                  size="sm"
-                >
-                  {selectedEntries.length === entries.length ? 'Deselect All' : 'Select All'}
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  {selectedEntries.length} selected
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                {showAnalysisAction && (
-                  <Button
-                    onClick={openAnalysisDialog}
-                    disabled={selectedEntries.length < 2 || isProcessing}
-                    size="sm"
-                    variant={selectedEntries.length >= 2 ? "secondary" : "outline"}
-                    className={selectedEntries.length < 2 ? "opacity-50" : ""}
-                  >
-                    <ChartBarIcon className="h-4 w-4 mr-1" />
-                    <span>Analyze {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
-                  </Button>
-                )}
-
-                {showMoveAction && (
-                  <Button
-                    onClick={openMoveDialog}
-                    disabled={selectedEntries.length === 0 || isProcessing}
-                    size="sm"
-                    variant={selectedEntries.length > 0 ? "default" : "outline"}
-                    className={selectedEntries.length === 0 ? "opacity-50" : ""}
-                  >
-                    <FolderIcon className="h-4 w-4 mr-1" />
-                    <span>Move {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
-                  </Button>
-                )}
-
-                <Button
-                  onClick={toggleSelectionMode}
-                  variant="ghost"
-                  size="sm"
-                >
-                  <span>Cancel</span>
-                </Button>
-              </div>
-            </>
-          ) : (
-            <div className="ml-auto flex space-x-2">
+      {/* Either render selection mode controls or external header buttons */}
+      <div className="mb-4 flex flex-wrap justify-between items-center gap-2 transition-all duration-300 ease-in-out">
+        {selectionMode ? (
+          <>
+            <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-left-2 duration-300">
+              <Button
+                onClick={toggleSelectAll}
+                variant="outline"
+                size="sm"
+              >
+                {selectedEntries.length === entries.length ? 'Deselect All' : 'Select All'}
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                {selectedEntries.length} selected
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-right-2 duration-300">
               {showAnalysisAction && (
                 <Button
-                  onClick={toggleSelectionMode}
-                  variant="outline"
+                  onClick={openAnalysisDialog}
+                  disabled={selectedEntries.length < 2 || isProcessing}
                   size="sm"
+                  variant={selectedEntries.length >= 2 ? "secondary" : "outline"}
+                  className={selectedEntries.length < 2 ? "opacity-50" : ""}
                 >
                   <ChartBarIcon className="h-4 w-4 mr-1" />
-                  <span>Analyze Entries</span>
+                  <span>Analyze {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
                 </Button>
               )}
 
               {showMoveAction && (
                 <Button
-                  onClick={toggleSelectionMode}
-                  variant="outline"
+                  onClick={openMoveDialog}
+                  disabled={selectedEntries.length === 0 || isProcessing}
                   size="sm"
+                  variant={selectedEntries.length > 0 ? "default" : "outline"}
+                  className={selectedEntries.length === 0 ? "opacity-50" : ""}
                 >
-                  <ArrowsRightLeftIcon className="h-4 w-4 mr-1" />
-                  <span>Move Entries</span>
+                  <FolderIcon className="h-4 w-4 mr-1" />
+                  <span>Move {selectedEntries.length > 0 ? `(${selectedEntries.length})` : ''}</span>
                 </Button>
               )}
+
+              <Button
+                onClick={toggleSelectionMode}
+                variant="ghost"
+                size="sm"
+              >
+                <span>Cancel</span>
+              </Button>
             </div>
-          )}
-        </div>
-      )}
+          </>
+        ) : (
+          <>
+            {/* Left side slot for custom header elements */}
+            <div className="transition-all duration-300">{headerButtons}</div>
+
+            {/* Right side action buttons */}
+            <div className="flex space-x-2 transition-all duration-300">
+              {(showMoveAction || showAnalysisAction) && (
+                <div className="flex space-x-2">
+                  {showAnalysisAction && (
+                    <Button
+                      onClick={toggleSelectionMode}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-1"
+                    >
+                      <ChartBarIcon className="h-4 w-4" />
+                      <span>Analyze Entries</span>
+                    </Button>
+                  )}
+
+                  {showMoveAction && (
+                    <Button
+                      onClick={toggleSelectionMode}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-1"
+                    >
+                      <ArrowsRightLeftIcon className="h-4 w-4" />
+                      <span>Move Entries</span>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Status message */}
       {statusMessage && (

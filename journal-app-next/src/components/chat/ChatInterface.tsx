@@ -80,7 +80,7 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
     };
 
     fetchDefaultModel();
-  }, [currentSessionModel]);
+  }, [currentSessionModel, setDefaultModel]);
 
    // Load messages when session ID changes
   useEffect(() => {
@@ -500,10 +500,10 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
   };
 
   return (
-    <div className="flex flex-col h-[70vh] border rounded-lg shadow-sm bg-background">
+    <div className="flex flex-col h-[70vh] border rounded-lg shadow-sm bg-background mx-6 w-auto mt-6 mb-2 p-0">
       {/* API Error Banner */}
       {apiError && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4">
+        <div className="bg-red-50 border-l-4 border-red-400 p-6">
           <div className="flex items-start">
             <div className="flex-shrink-0">
               <AlertCircle className="h-5 w-5 text-red-400" />
@@ -534,7 +534,7 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       )}
 
       {/* Streaming Mode Toggle */}
-      <div className="px-4 py-2 flex justify-between border-b">
+      <div className="px-6 py-3 flex justify-between border-b">
         <div>
           {sessionId && (
             <button
@@ -570,13 +570,13 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       </div>
 
       {/* Chat messages container */}
-      <div className="flex-1 overflow-y-auto p-4 bg-background">
+      <div className="flex-1 overflow-y-auto p-6 bg-background">
         {messages.length === 0 && !isStreaming ? (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <p>Start chatting with your journal. Ask about entries, trends, or memories.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {messages.map((message) => (
               <div key={message.id} className="space-y-2">
                 <ChatMessage message={message} />
@@ -586,7 +586,7 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
             {/* Streaming Message */}
             {isStreaming && streamingMessage && (
-              <div className="space-y-2">
+              <div className="space-y-2 mb-6">
                 <ChatMessage
                   message={{
                     id: 'streaming',
@@ -602,7 +602,7 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
             {/* Loading indicator */}
             {loading && !isStreaming && (
-              <div className="flex items-center space-x-2 text-gray-500">
+              <div className="flex items-center space-x-3 mt-6 text-gray-500">
                 <div className="typing-indicator">
                   <span></span>
                   <span></span>
@@ -618,7 +618,7 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       </div>
 
       {/* Input area */}
-      <div className="border-t p-4 bg-background">
+      <div className="border-t p-6 bg-background">
         <ChatInput onSendMessage={handleSendMessage} isLoading={loading} />
       </div>
     </div>

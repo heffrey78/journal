@@ -344,9 +344,12 @@ class StorageManager:
             f.write(f"# {entry.title}\n\n{entry.content}")
 
         # Save metadata to SQLite
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        conn = None
         try:
+            # Use a timeout to prevent database locks from blocking indefinitely
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            cursor = conn.cursor()
+
             # Delete any existing vectors for this entry (for updates)
             cursor.execute("DELETE FROM vectors WHERE entry_id = ?", (entry.id,))
 
@@ -366,10 +369,20 @@ class StorageManager:
             self._index_for_vector_search(conn, entry)
 
             conn.commit()
-        finally:
-            conn.close()
 
-        return entry.id
+            # Add to cache
+            self._add_to_cache(entry)
+
+            return entry.id
+        except Exception as e:
+            # Log the error and rethrow
+            logging.error(f"Error saving entry {entry.id}: {str(e)}")
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
 
     def _index_for_vector_search(self, conn, entry: JournalEntry):
         """

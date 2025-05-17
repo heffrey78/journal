@@ -27,6 +27,22 @@ export interface UpdateJournalEntryInput {
   images?: string[];
 }
 
+// Import interfaces
+export interface ImportResult {
+  total: number;
+  successful: number;
+  failed: number;
+  entries: {
+    id: string;
+    filename: string;
+    title: string;
+  }[];
+  failures: {
+    filename: string;
+    error: string;
+  }[];
+}
+
 // Batch analysis interfaces
 export interface BatchAnalysis {
   id: string;

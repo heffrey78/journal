@@ -9,6 +9,8 @@ import { entriesApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import Container from '@/components/layout/Container';
 import ContentPadding from '@/components/layout/ContentPadding';
+import { ImportModal } from '@/components/entries/ImportModal';
+import { FileUp } from 'lucide-react';
 
 export default function EntriesPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -16,6 +18,7 @@ export default function EntriesPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const entriesPerPage = 10;
 
   useEffect(() => {
@@ -52,15 +55,17 @@ export default function EntriesPage() {
     }
   };
 
+  const handleImportComplete = () => {
+    // Refresh the entries list
+    setCurrentPage(0); // Reset to first page
+  };
+
   return (
     <MainLayout>
       <Container maxWidth="4xl" className="mx-auto">
         <ContentPadding size="md">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Your Journal Entries</h1>
-            <Link href="/entries/new">
-              <Button>New Entry</Button>
-            </Link>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Your Entries</h1>
           </div>
 
           {loading ? (
@@ -73,7 +78,24 @@ export default function EntriesPage() {
             </div>
           ) : (
             <>
-              <EntryList entries={entries} />
+              <EntryList
+                entries={entries}
+                headerButtons={
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsImportModalOpen(true)}
+                      className="flex items-center gap-1"
+                    >
+                      <FileUp className="h-4 w-4" />
+                      Import
+                    </Button>
+                    <Link href="/entries/new">
+                      <Button>New Entry</Button>
+                    </Link>
+                  </div>
+                }
+              />
 
               {/* Pagination Controls */}
               <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-gray-800">
@@ -99,6 +121,13 @@ export default function EntriesPage() {
           )}
         </ContentPadding>
       </Container>
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportComplete={handleImportComplete}
+      />
     </MainLayout>
   );
 }

@@ -109,133 +109,135 @@ export default function SearchPage() {
     <MainLayout>
       <Container maxWidth="4xl" className="mx-auto">
         <ContentPadding size="md">
-          <div className="mb-6">
+          <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Search Journal Entries</h1>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Search Form */}
             <div className="lg:col-span-1">
-              <Card className="mb-6">
-                <form onSubmit={handleBasicSearch} className="mb-6">
-                  <div className="mb-4">
-                    <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Quick Search
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="text"
-                        id="search"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search entries..."
-                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-l-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <Button
-                        type="submit"
-                        disabled={!query.trim() || isSearching}
-                        isLoading={isSearching}
-                        className="rounded-l-none"
-                      >
-                        Search
-                      </Button>
-                    </div>
+              <Card className="mb-6 overflow-hidden">
+                <div className="p-6">
+                  <form onSubmit={handleBasicSearch} className="mb-8">
+                    <div className="mb-4">
+                      <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Quick Search
+                      </label>
+                      <div className="flex">
+                        <input
+                          type="text"
+                          id="search"
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          placeholder="Search entries..."
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-l-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <Button
+                          type="submit"
+                          disabled={!query.trim() || isSearching}
+                          isLoading={isSearching}
+                          className="rounded-l-none"
+                        >
+                          Search
+                        </Button>
+                      </div>
 
-                    {/* Semantic search checkbox */}
-                    <div className="mt-2">
-                      <label className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                      {/* Semantic search checkbox */}
+                      <div className="mt-3">
+                        <label className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useSemanticSearch}
+                            onChange={(e) => setUseSemanticSearch(e.target.checked)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <span>Use semantic search (powered by Ollama)</span>
+                        </label>
+                      </div>
+                    </div>
+                  </form>
+
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-6">Advanced Search</h2>
+                    <form onSubmit={handleAdvancedSearch} className="space-y-6">
+                      {availableTags.length > 0 && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                            Filter by Tags
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {availableTags.map(tag => (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => toggleTag(tag)}
+                                className={`text-sm px-3 py-1 rounded-full ${
+                                  selectedTags.includes(tag)
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                }`}
+                              >
+                                {tag}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                          Date Range
+                        </label>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label htmlFor="start-date" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                              From
+                            </label>
+                            <input
+                              type="date"
+                              id="start-date"
+                              value={startDate}
+                              onChange={(e) => setStartDate(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="end-date" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                              To
+                            </label>
+                            <input
+                              type="date"
+                              id="end-date"
+                              value={endDate}
+                              onChange={(e) => setEndDate(e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center py-2">
                         <input
                           type="checkbox"
-                          checked={useSemanticSearch}
-                          onChange={(e) => setUseSemanticSearch(e.target.checked)}
+                          id="favorites"
+                          checked={showFavorites}
+                          onChange={(e) => setShowFavorites(e.target.checked)}
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
-                        <span>Use semantic search (powered by Ollama)</span>
-                      </label>
-                    </div>
-                  </div>
-                </form>
-
-                <div>
-                  <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Advanced Search</h2>
-                  <form onSubmit={handleAdvancedSearch} className="space-y-4">
-                    {availableTags.length > 0 && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Filter by Tags
+                        <label htmlFor="favorites" className="ml-3 block text-sm text-gray-700 dark:text-gray-300">
+                          Show only favorites
                         </label>
-                        <div className="flex flex-wrap gap-2">
-                          {availableTags.map(tag => (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => toggleTag(tag)}
-                              className={`text-sm px-3 py-1 rounded-full ${
-                                selectedTags.includes(tag)
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                              }`}
-                            >
-                              {tag}
-                            </button>
-                          ))}
-                        </div>
                       </div>
-                    )}
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Date Range
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="start-date" className="block text-xs text-gray-500 dark:text-gray-400">
-                            From
-                          </label>
-                          <input
-                            type="date"
-                            id="start-date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="end-date" className="block text-xs text-gray-500 dark:text-gray-400">
-                            To
-                          </label>
-                          <input
-                            type="date"
-                            id="end-date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="favorites"
-                        checked={showFavorites}
-                        onChange={(e) => setShowFavorites(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="favorites" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                        Show only favorites
-                      </label>
-                    </div>
-
-                    <Button
-                      type="submit"
-                      isLoading={isSearching}
-                      className="w-full"
-                    >
-                      Search with Filters
-                    </Button>
-                  </form>
+                      <Button
+                        type="submit"
+                        isLoading={isSearching}
+                        className="w-full mt-4"
+                      >
+                        Search with Filters
+                      </Button>
+                    </form>
+                  </div>
                 </div>
               </Card>
             </div>
@@ -243,18 +245,18 @@ export default function SearchPage() {
             {/* Search Results */}
             <div className="lg:col-span-2">
               {error && (
-                <div className="bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-4 rounded-md mb-4">
+                <div className="bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-300 p-6 rounded-md mb-6">
                   {error}
                 </div>
               )}
 
               {isSearching ? (
-                <div className="flex justify-center py-8">
+                <div className="flex justify-center py-12">
                   <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
                 </div>
               ) : hasSearched ? (
                 <>
-                  <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+                  <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">
                     {searchType === 'semantic' && (
                       <span className="text-blue-500 dark:text-blue-400 mr-2">[Semantic]</span>
                     )}
@@ -263,7 +265,7 @@ export default function SearchPage() {
                   <EntryList entries={results} />
 
                   {searchType === 'semantic' && results.length > 0 && (
-                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                    <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
                       <p className="text-sm">
                         <strong>Semantic search:</strong> Results are ranked by relevance to your query using AI-powered embeddings.
                       </p>
@@ -271,7 +273,7 @@ export default function SearchPage() {
                   )}
                 </>
               ) : (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                <div className="text-center py-16 text-gray-500 dark:text-gray-400">
                   <p>Enter a search query to find journal entries</p>
                 </div>
               )}

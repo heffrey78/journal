@@ -19,10 +19,12 @@ from typing import List, Optional, Any, Union
 from datetime import datetime, date
 from pydantic import BaseModel, Field
 import traceback
+import re
 
 from app.models import JournalEntry, LLMConfig, BatchAnalysisRequest, BatchAnalysis
 from app.storage import StorageManager
 from app.llm_service import LLMService, EntrySummary, BatchAnalysisError
+from app.import_service import ImportService
 from app.organization_routes import organization_router
 from app.chat_routes import chat_router
 from app.config_routes import config_router
@@ -51,7 +53,7 @@ app.include_router(config_router)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Allow requests from Next.js frontend
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
@@ -1501,3 +1503,161 @@ async def get_entry_batch_analyses(
             status_code=500,
             detail=f"Failed to retrieve batch analyses for entry: {str(e)}",
         )
+
+
+# Import endpoints
+@app.post("/entries/import", tags=["entries"])
+async def import_files(
+    files: List[UploadFile] = File(...),
+    tags: str = Form(None),
+    folder: str = Form(None),
+    use_file_dates: bool = Form(False),
+    custom_title: str = Form(None),
+    storage: StorageManager = Depends(get_storage),
+):
+    """
+    Import multiple files as journal entries.
+
+    Args:
+        files: List of files to import
+        tags: Comma-separated list of tags to apply to all entries
+        folder: Optional folder to store entries in
+        use_file_dates: Whether to use the file's creation date as the entry date
+        custom_title: Optional custom title. For multiple files, date will be appended.
+
+    Returns:
+        Summary of import operation
+    """
+    from app.file_utils import process_uploaded_files
+    import tempfile
+    import os
+    from datetime import datetime
+
+    import_service = ImportService(storage)
+
+    # Parse tags
+    tag_list = []
+    if tags:
+        tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+
+    # Log import details
+    logger.info(
+        f"Starting import of {len(files)} files, custom_title={custom_title}, "
+        f"use_file_dates={use_file_dates}"
+    )
+
+    results = {
+        "total": len(files),
+        "successful": 0,
+        "failed": 0,
+        "entries": [],
+        "failures": [],
+    }
+
+    # Process all uploaded files first to ensure they're properly read
+    processed_files = await process_uploaded_files(files)
+    logger.info(f"Successfully processed {len(processed_files)} files for import")
+
+    for file_content, filename in processed_files:
+        try:
+            # Log file processing
+            logger.info(f"Processing file: {filename}, size: {len(file_content)} bytes")
+
+            # Get file creation date if requested
+            file_date = None
+            if use_file_dates:
+                # We'll need to save the file temporarily to get its metadata
+                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                    temp_file.write(file_content)
+                    temp_file_path = temp_file.name
+
+                try:
+                    # Try to extract date from filename for known formats
+                    if filename:  # Check that filename is not None
+                        filename_date_match = re.search(
+                            r"(\d{4})[-_](\d{2})[-_](\d{2})", filename
+                        )
+                        if filename_date_match:
+                            # Extract year, month, day from filename
+                            year, month, day = map(int, filename_date_match.groups())
+                            try:
+                                # Create date from extracted components
+                                file_date = datetime(year, month, day)
+                                logger.info(
+                                    f"Using date from filename: {file_date} "
+                                    f"for {filename}"
+                                )
+                            except ValueError:
+                                # If date is invalid, fall back to file stats
+                                logger.warning(
+                                    f"Invalid date in filename {filename}, "
+                                    "using file stats"
+                                )
+                                file_date = None
+
+                    # If we couldn't get date from filename, use file stats
+                    if file_date is None:
+                        # Get file creation time
+                        file_stats = os.stat(temp_file_path)
+                        # Use the earliest time available
+                        file_date = datetime.fromtimestamp(
+                            min(
+                                file_stats.st_mtime,  # modification time
+                                file_stats.st_ctime,  # metadata change time
+                            )
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not get file date for {filename}: {str(e)}")
+
+                # Clean up the temporary file
+                try:
+                    os.unlink(temp_file_path)
+                except Exception:
+                    pass
+
+            # Process the file
+            success, entry_id, error_message = import_service.process_file(
+                file_content,
+                filename or "unknown_file",  # Use a default if filename is None
+                tag_list,
+                folder,
+                file_date,
+                custom_title,
+                is_multi_file_import=len(files) > 1,
+            )
+
+            logger.info(
+                f"Import result for {filename}: success={success}, entry_id={entry_id}"
+            )
+
+            if success and entry_id:
+                # Get the entry to include in response
+                entry = storage.get_entry(entry_id)
+                results["successful"] += 1
+                results["entries"].append(
+                    {
+                        "id": entry_id,
+                        "filename": filename,
+                        "title": entry.title if entry else "Unknown",
+                    }
+                )
+
+                import gc
+
+                gc.collect()  # Encourage garbage collection
+            else:
+                results["failed"] += 1
+                results["failures"].append(
+                    {"filename": filename, "error": error_message or "Unknown error"}
+                )
+
+        except Exception as e:
+            logger.error(f"Error importing file {filename}: {str(e)}", exc_info=True)
+            results["failed"] += 1
+            results["failures"].append({"filename": filename, "error": str(e)})
+
+    logger.info(
+        f"Import completed: {results['successful']}/"
+        f"{results['total']} files successfully imported"
+    )
+    return results

@@ -114,15 +114,15 @@ export default function SettingsPage() {
     <MainLayout>
       <Container maxWidth="4xl" className="mx-auto">
         <ContentPadding size="md">
-          <div className="mb-6">
+          <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
           </div>
 
           {/* Settings tab navigation */}
-          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="mb-8 border-b border-gray-200 dark:border-gray-700">
             <div className="flex flex-wrap -mb-px">
               <button
-                className={`mr-2 inline-block py-2 px-4 border-b-2 font-medium text-sm ${
+                className={`mr-4 inline-block py-3 px-4 border-b-2 font-medium text-sm ${
                   currentTab === 'appearance'
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -132,7 +132,7 @@ export default function SettingsPage() {
                 Appearance
               </button>
               <button
-                className={`mr-2 inline-block py-2 px-4 border-b-2 font-medium text-sm ${
+                className={`mr-4 inline-block py-3 px-4 border-b-2 font-medium text-sm ${
                   currentTab === 'editor'
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -142,7 +142,7 @@ export default function SettingsPage() {
                 Editor
               </button>
               <button
-                className={`mr-2 inline-block py-2 px-4 border-b-2 font-medium text-sm ${
+                className={`mr-4 inline-block py-3 px-4 border-b-2 font-medium text-sm ${
                   currentTab === 'llm'
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
@@ -157,66 +157,70 @@ export default function SettingsPage() {
           {/* Appearance settings */}
           {currentTab === 'appearance' && (
             <Card className="mb-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Appearance</h2>
-              <ThemeSettings onSave={() => handleSettingsSave()} />
+              <div className="p-6">
+                <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">Appearance</h2>
+                <ThemeSettings onSave={() => handleSettingsSave()} />
+              </div>
             </Card>
           )}
 
           {/* Editor settings */}
           {currentTab === 'editor' && (
             <Card className="mb-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Editor</h2>
+              <div className="p-6">
+                <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">Editor</h2>
 
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="word-count"
-                    checked={settings.showWordCount}
-                    onChange={(e) => setSettings({...settings, showWordCount: e.target.checked})}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="word-count" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                    Show word count
-                  </label>
-                </div>
+                <div className="space-y-6">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="word-count"
+                      checked={settings.showWordCount}
+                      onChange={(e) => setSettings({...settings, showWordCount: e.target.checked})}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="word-count" className="ml-3 block text-sm text-gray-700 dark:text-gray-300">
+                      Show word count
+                    </label>
+                  </div>
 
-                <div>
-                  <label htmlFor="auto-save" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Auto-save Interval: {settings.autoSaveInterval} seconds
-                  </label>
-                  <input
-                    type="range"
-                    id="auto-save"
-                    min="0"
-                    max="120"
-                    step="5"
-                    value={settings.autoSaveInterval}
-                    onChange={(e) => setSettings({...settings, autoSaveInterval: parseInt(e.target.value, 10)})}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {settings.autoSaveInterval === 0 ? 'Auto-save disabled' : `Auto-save every ${settings.autoSaveInterval} seconds`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-between mt-6">
-                <Button variant="outline" onClick={handleReset}>
-                  Reset to Default
-                </Button>
-                <div className="flex items-center gap-3">
-                  {saveMessage && (
-                    <p className={`text-sm ${saveMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {saveMessage.text}
+                  <div>
+                    <label htmlFor="auto-save" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Auto-save Interval: {settings.autoSaveInterval} seconds
+                    </label>
+                    <input
+                      type="range"
+                      id="auto-save"
+                      min="0"
+                      max="120"
+                      step="5"
+                      value={settings.autoSaveInterval}
+                      onChange={(e) => setSettings({...settings, autoSaveInterval: parseInt(e.target.value, 10)})}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      {settings.autoSaveInterval === 0 ? 'Auto-save disabled' : `Auto-save every ${settings.autoSaveInterval} seconds`}
                     </p>
-                  )}
-                  <Button
-                    onClick={saveSettings}
-                    isLoading={isSaving}
-                  >
-                    Save Settings
+                  </div>
+                </div>
+
+                <div className="flex justify-between mt-8">
+                  <Button variant="outline" onClick={handleReset}>
+                    Reset to Default
                   </Button>
+                  <div className="flex items-center gap-4">
+                    {saveMessage && (
+                      <p className={`text-sm ${saveMessage.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {saveMessage.text}
+                      </p>
+                    )}
+                    <Button
+                      onClick={saveSettings}
+                      isLoading={isSaving}
+                    >
+                      Save Settings
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -225,8 +229,10 @@ export default function SettingsPage() {
           {/* LLM settings */}
           {currentTab === 'llm' && (
             <Card className="mb-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">LLM Configuration</h2>
-              <LLMSettings onSaveComplete={handleSettingsSave} />
+              <div className="p-6">
+                <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">LLM Configuration</h2>
+                <LLMSettings onSaveComplete={handleSettingsSave} />
+              </div>
             </Card>
           )}
 

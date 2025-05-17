@@ -2,3 +2,6 @@ fastapi
 pydantic
 uvicorn
 requests
+python-multipart
+Markdown
+chardet

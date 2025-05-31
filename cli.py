@@ -6,11 +6,15 @@ Advanced CLI for journal management with full feature parity to the web API.
 import argparse
 import sys
 import datetime
+import os
+import glob
+import re
 from typing import List, Dict, Any, Optional
 
 from app.models import JournalEntry
 from app.storage import StorageManager
 from app.llm_service import LLMService
+from app.import_service import ImportService
 
 
 def create_entry(
@@ -174,6 +178,86 @@ def toggle_favorite(storage: StorageManager, entry_id: str, favorite: bool) -> N
         print(f"Entry {entry_id} {status} successfully.")
     else:
         print(f"Failed to update favorite status for entry {entry_id}.")
+
+
+def bulk_import(
+    storage: StorageManager,
+    directory: str,
+    pattern: str = "*.md",
+    tags: Optional[List[str]] = None,
+    folder: Optional[str] = None,
+    custom_title: Optional[str] = None,
+) -> None:
+    """Bulk import multiple files from a directory."""
+    import_service = ImportService(storage)
+
+    # Expand the directory path
+    directory = os.path.expanduser(directory)
+
+    if not os.path.exists(directory):
+        print(f"Error: Directory '{directory}' does not exist.")
+        return
+
+    # Build the full pattern path
+    search_pattern = os.path.join(directory, pattern)
+    files = glob.glob(search_pattern)
+
+    if not files:
+        print(f"No files found matching pattern '{pattern}' in '{directory}'")
+        return
+
+    # Sort files for consistent processing
+    files.sort()
+
+    print(f"Found {len(files)} files to import...")
+    print("-" * 60)
+
+    successful_imports = 0
+    failed_imports = 0
+
+    for file_path in files:
+        try:
+            # Read file content
+            with open(file_path, "rb") as f:
+                file_data = f.read()
+
+            filename = os.path.basename(file_path)
+            print(f"Processing: {filename}")
+
+            # Try to extract date from filename (format: YYYY_MM_DD.md)
+            file_date = None
+            date_match = re.search(r"(\d{4})_(\d{2})_(\d{2})", filename)
+            if date_match:
+                year, month, day = date_match.groups()
+                try:
+                    file_date = datetime.datetime(int(year), int(month), int(day))
+                except ValueError:
+                    pass  # Invalid date, keep as None
+
+            # Process the file
+            success, entry_id, error = import_service.process_file(
+                file_data=file_data,
+                filename=filename,
+                tags=tags or [],
+                folder=folder,
+                file_date=file_date,
+                custom_title=custom_title,
+                is_multi_file_import=True,
+            )
+
+            if success:
+                successful_imports += 1
+                print(f"  ✓ Successfully imported as entry: {entry_id}")
+            else:
+                failed_imports += 1
+                print(f"  ✗ Failed to import: {error}")
+
+        except Exception as e:
+            failed_imports += 1
+            print(f"  ✗ Error processing {filename}: {str(e)}")
+
+    print("-" * 60)
+    print(f"Import completed: {successful_imports} successful, {failed_imports} failed")
 
 
 def summarize_entry(
@@ -398,6 +482,27 @@ def main():
     # Tags command
     _ = subparsers.add_parser("tags", help="List all available tags")
 
+    # Import command
+    import_parser = subparsers.add_parser(
+        "import", help="Bulk import files from a directory"
+    )
+    import_parser.add_argument("directory", help="Directory containing files to import")
+    import_parser.add_argument(
+        "--pattern", "-p", default="*.md", help="File pattern to match (default: *.md)"
+    )
+    import_parser.add_argument(
+        "--tags",
+        "-t",
+        help="Comma-separated list of tags to apply to all entries",
+        default="",
+    )
+    import_parser.add_argument(
+        "--folder", "-f", help="Folder path to organize entries into"
+    )
+    import_parser.add_argument(
+        "--title", help="Custom title prefix for imported entries"
+    )
+
     # Summarize command
     summarize_parser = subparsers.add_parser(
         "summarize", help="Generate a summary/analysis for an entry"
@@ -491,6 +596,21 @@ def main():
 
     elif args.command == "tags":
         list_tags(storage)
+
+    elif args.command == "import":
+        tags = (
+            [tag.strip() for tag in args.tags.split(",") if tag.strip()]
+            if args.tags
+            else None
+        )
+        bulk_import(
+            storage,
+            args.directory,
+            pattern=args.pattern,
+            tags=tags,
+            folder=args.folder,
+            custom_title=args.title,
+        )
 
     elif args.command == "summarize":
         summarize_entry(storage, llm_service, args.id, prompt_type=args.prompt)

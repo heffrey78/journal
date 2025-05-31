@@ -4,12 +4,23 @@ from typing import List, Optional, Dict, Any
 import uuid
 
 
+def generate_unique_entry_id() -> str:
+    """
+    Generate a unique entry ID with timestamp prefix and UUID suffix.
+    This ensures uniqueness even when multiple entries are created rapidly.
+    Format: YYYYMMDDHHMMSS_XXXXXXXX (where X is first 8 chars of UUID)
+    """
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    unique_suffix = str(uuid.uuid4()).replace("-", "")[:8]
+    return f"{timestamp}_{unique_suffix}"
+
+
 class JournalEntry(BaseModel):
     """
     Represents a journal entry with metadata and content.
 
     Attributes:
-        id: Unique identifier for the entry (defaults to timestamp-based)
+        id: Unique identifier for the entry (defaults to timestamp + UUID)
         title: Title of the journal entry
         content: Main content of the journal entry in markdown format
         created_at: Timestamp when the entry was created
@@ -20,7 +31,7 @@ class JournalEntry(BaseModel):
         images: List of image IDs associated with this entry
     """
 
-    id: str = Field(default_factory=lambda: datetime.now().strftime("%Y%m%d%H%M%S"))
+    id: str = Field(default_factory=generate_unique_entry_id)
     title: str
     content: str
     created_at: datetime = Field(default_factory=datetime.now)

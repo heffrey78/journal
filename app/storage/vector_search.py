@@ -1,6 +1,7 @@
 import numpy as np
 import sqlite3
 import re
+import os
 from typing import List, Dict, Any
 
 from sklearn.metrics.pairwise import cosine_similarity
@@ -291,9 +292,10 @@ class VectorStorage(BaseStorage):
 
         logger = logging.getLogger(__name__)
 
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
         try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor()
+
             # Get total count for batching
             cursor.execute("SELECT COUNT(*) FROM vectors WHERE embedding IS NOT NULL")
             total_vectors = cursor.fetchone()[0]
@@ -354,7 +356,7 @@ class VectorStorage(BaseStorage):
                     v.text,
                     v.embedding,
                     e.title,
-                    e.content,
+                    e.file_path,
                     e.created_at
                     FROM vectors v
                     JOIN entries e ON v.entry_id = e.id
@@ -372,7 +374,7 @@ class VectorStorage(BaseStorage):
                         text,
                         embedding_bytes,
                         title,
-                        content,
+                        file_path,
                         created_at,
                     ) = row
                     if embedding_bytes:
@@ -396,6 +398,22 @@ class VectorStorage(BaseStorage):
                                     0
                                 ]
                             )
+
+                            # Read content from file
+                            content = ""
+                            if file_path and os.path.exists(file_path):
+                                try:
+                                    with open(file_path, "r") as f:
+                                        content = f.read()
+                                        # Remove title header if present
+                                        if content.startswith(f"# {title}"):
+                                            header_len = len(f"# {title}")
+                                            content = content[header_len:].strip()
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Error reading file {file_path}: {e}"
+                                    )
+                                    content = ""
 
                             # Create entry object for the result
                             from app.models import JournalEntry
@@ -443,4 +461,5 @@ class VectorStorage(BaseStorage):
             logger.error(f"Error in semantic search: {e}")
             return []
         finally:
-            conn.close()
+            if "conn" in locals():
+                conn.close()

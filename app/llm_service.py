@@ -205,6 +205,26 @@ class LLMService:
             logger.error(f"Embedding generation failed: {e}")
             raise LLMServiceError(f"Failed to generate embedding: {e}")
 
+    def _get_model_for_operation(self, operation_type: str) -> str:
+        """
+        Get the appropriate model for a specific operation type.
+
+        Args:
+            operation_type: Type of operation ('search', 'chat', 'analysis')
+
+        Returns:
+            Model name to use for the operation
+        """
+        if operation_type == "search" and self.config.search_model:
+            return self.config.search_model
+        elif operation_type == "chat" and self.config.chat_model:
+            return self.config.chat_model
+        elif operation_type == "analysis" and self.config.analysis_model:
+            return self.config.analysis_model
+        else:
+            # Fall back to default model
+            return self.config.model_name
+
     def process_entries_without_embeddings(
         self,
         limit: int = 10,

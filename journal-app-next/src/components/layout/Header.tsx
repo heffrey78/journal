@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import ThemeToggle from '../theme/ThemeToggle';
+import GlobalActions from './GlobalActions';
 import { ChartBarIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import Container from './Container';
@@ -18,16 +19,20 @@ const Header: React.FC = () => {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border shadow-sm" style={{ backgroundColor: 'var(--header-background, var(--background))' }}>
-      <Container as="div" className="py-4">
-        <Cluster justify="between" align="center" gap="sm">
-          <div className="flex items-center">
-            <Link href="/" className="text-2xl font-bold text-primary">
-              Journal App
-            </Link>
-          </div>
+      <div className="flex items-center justify-between w-full">
+        {/* Left section - aligned with sidebar on desktop, flexible on mobile */}
+        <div className="md:w-64 flex-shrink-0 px-4 sm:px-6 md:px-8 py-4 md:border-r border-border">
+          <Link href="/" className="text-2xl font-bold text-primary">
+            Reflection
+          </Link>
+        </div>
 
-          <nav className="hidden md:flex">
-            <Cluster gap="md" align="center">
+        {/* Right section - navigation and actions */}
+        <div className="flex-1 px-4 sm:px-6 md:px-8 py-4">
+          <Cluster justify="between" align="center" gap="sm">
+
+            <nav className="hidden md:flex flex-1">
+              <Cluster gap="md" align="center">
               <Link
                 href="/"
                 className={cn(
@@ -85,13 +90,17 @@ const Header: React.FC = () => {
                 Settings
               </Link>
 
+              {/* Global Actions */}
+              <GlobalActions />
+
               {/* Theme Toggle */}
               <ThemeToggle className="ml-2" />
             </Cluster>
           </nav>
 
-          {/* Mobile header with menu button and theme toggle */}
+          {/* Mobile header with global actions and theme toggle */}
           <div className="md:hidden flex items-center space-x-2">
+            <GlobalActions />
             <ThemeToggle />
 
             <button className="text-foreground hover:text-primary p-2" aria-label="Open menu">
@@ -99,9 +108,10 @@ const Header: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
               </svg>
             </button>
-          </div>
-        </Cluster>
-      </Container>
+            </div>
+          </Cluster>
+        </div>
+      </div>
     </header>
   );
 };

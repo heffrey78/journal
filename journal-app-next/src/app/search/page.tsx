@@ -3,12 +3,9 @@
 import { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import EntryList from '@/components/entries/EntryList';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Button, Card, Input, Container, ContentPadding } from '@/components/design-system';
 import { searchApi, tagsApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
-import Container from '@/components/layout/Container';
-import ContentPadding from '@/components/layout/ContentPadding';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
@@ -124,13 +121,13 @@ export default function SearchPage() {
                         Quick Search
                       </label>
                       <div className="flex">
-                        <input
+                        <Input
                           type="text"
                           id="search"
                           value={query}
                           onChange={(e) => setQuery(e.target.value)}
                           placeholder="Search entries..."
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-l-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="flex-1 rounded-r-none"
                         />
                         <Button
                           type="submit"
@@ -193,24 +190,22 @@ export default function SearchPage() {
                             <label htmlFor="start-date" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                               From
                             </label>
-                            <input
+                            <Input
                               type="date"
                               id="start-date"
                               value={startDate}
                               onChange={(e) => setStartDate(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
                           <div>
                             <label htmlFor="end-date" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                               To
                             </label>
-                            <input
+                            <Input
                               type="date"
                               id="end-date"
                               value={endDate}
                               onChange={(e) => setEndDate(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
                         </div>

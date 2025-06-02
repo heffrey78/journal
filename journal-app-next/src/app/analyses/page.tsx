@@ -6,11 +6,8 @@ import { format } from 'date-fns';
 import MainLayout from '@/components/layout/MainLayout';
 import { batchAnalysisApi } from '@/lib/api';
 import { BatchAnalysis } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Badge, Skeleton, Container, ContentPadding } from '@/components/design-system';
 import { ChartBarIcon, ClockIcon } from '@heroicons/react/24/outline';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AnalysesPage() {
   const [analyses, setAnalyses] = useState<BatchAnalysis[]>([]);
@@ -51,10 +48,11 @@ export default function AnalysesPage() {
 
   return (
     <MainLayout>
-      <div className="container max-w-5xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Batch Analyses</h1>
-        </div>
+      <Container maxWidth="4xl" className="mx-auto">
+        <ContentPadding size="md">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold">Batch Analyses</h1>
+          </div>
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -153,7 +151,8 @@ export default function AnalysesPage() {
             ))}
           </div>
         )}
-      </div>
+        </ContentPadding>
+      </Container>
     </MainLayout>
   );
 }

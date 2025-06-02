@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Journal App",
-  description: "A personal journaling application with theme customization",
+  title: "Reflection",
+  description: "A self-reflective space for notes, analysis, journaling, and markdown thoughts",
 };
 
 export default function RootLayout({

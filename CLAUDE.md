@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a full-stack journal application with AI-powered features:
+This is Llens, a full-stack journal application with AI-powered features:
 
 - **Backend**: FastAPI Python API with SQLite storage
 - **Frontend**: Next.js TypeScript app (in `journal-app-next/`)

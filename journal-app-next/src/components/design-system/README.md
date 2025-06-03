@@ -1,6 +1,6 @@
 # Design System Documentation
 
-This document outlines the unified design system for the Journal Application, providing consistent components, patterns, and guidelines for maintaining a cohesive user experience.
+This document outlines the unified design system for Llens, providing consistent components, patterns, and guidelines for maintaining a cohesive user experience.
 
 ## Core Principles
 

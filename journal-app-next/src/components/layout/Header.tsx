@@ -7,8 +7,8 @@ import ThemeToggle from '../theme/ThemeToggle';
 import GlobalActions from './GlobalActions';
 import { ChartBarIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
-import Container from './Container';
 import Cluster from './Cluster';
+import Logo from './Logo';
 
 const Header: React.FC = () => {
   const pathname = usePathname();
@@ -22,9 +22,7 @@ const Header: React.FC = () => {
       <div className="flex items-center justify-between w-full">
         {/* Left section - aligned with sidebar on desktop, flexible on mobile */}
         <div className="md:w-64 flex-shrink-0 px-4 sm:px-6 md:px-8 py-4 md:border-r border-border">
-          <Link href="/" className="text-2xl font-bold text-primary">
-            Reflection
-          </Link>
+          <Logo />
         </div>
 
         {/* Right section - navigation and actions */}
@@ -70,15 +68,6 @@ const Header: React.FC = () => {
               >
                 <ChatBubbleLeftRightIcon className="h-4 w-4 mr-1" />
                 Chat
-              </Link>
-              <Link
-                href="/search"
-                className={cn(
-                  "text-foreground hover:text-primary px-1 py-2 transition-colors",
-                  isActive('/search')
-                )}
-              >
-                Search
               </Link>
               <Link
                 href="/settings"

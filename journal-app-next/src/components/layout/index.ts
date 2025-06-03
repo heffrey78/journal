@@ -26,6 +26,7 @@ export { default as MainLayout } from './MainLayout';
 export { default as Header } from './Header';
 export { default as Footer } from './Footer';
 export { default as FolderSidebar } from './FolderSidebar';
+export { default as Logo } from './Logo';
 
 // Re-export all layout components as a default object for specific imports
 const Layout = {
@@ -44,6 +45,7 @@ const Layout = {
   Header,
   Footer,
   FolderSidebar,
+  Logo,
 };
 
 export default Layout;

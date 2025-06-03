@@ -1,6 +1,6 @@
-# Journal App
+# Llens
 
-The Journal App is a personal journaling application designed to help users create, store, and search journal entries efficiently. It features a FastAPI backend, SQLite for metadata storage, and vector search capabilities using SQLite and Ollama.
+Llens is a personal journaling application that provides a lens into your thoughts, designed to help users create, store, and search journal entries efficiently. It features a FastAPI backend, SQLite for metadata storage, and vector search capabilities using SQLite and Ollama.
 
 ## Features
 
@@ -69,7 +69,7 @@ The application uses a simple architecture with SQLite at its core:
 
 ### Using the Next.js Frontend
 
-The Journal App includes a modern alternative frontend built with Next.js:
+Llens includes a modern alternative frontend built with Next.js:
 
 1. Make sure the API server is running (as above)
 2. Navigate to the Next.js directory:
@@ -147,7 +147,7 @@ You can toggle between text search and semantic search in the UI by checking the
 
 ## Advanced Search Options
 
-The Journal App includes powerful search capabilities that can be combined to find exactly what you're looking for:
+Llens includes powerful search capabilities that can be combined to find exactly what you're looking for:
 
 ### Search Types
 
@@ -196,7 +196,7 @@ This will index any new entries into the semantic search engine.
 
 ## API Endpoints
 
-The Journal App exposes the following REST API endpoints:
+Llens exposes the following REST API endpoints:
 
 ### Entries Management
 

@@ -42,6 +42,7 @@ export {
 
 // Utility components
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+export { Collapsible, CollapsibleSection } from '@/components/ui/collapsible';
 
 // Navigation components
 export { Pagination } from './Pagination';

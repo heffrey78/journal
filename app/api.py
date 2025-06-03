@@ -38,7 +38,9 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
-    title="Journal API", description="API for managing journal entries", version="0.1.0"
+    title="Llens API",
+    description="API for managing notes and journal entries",
+    version="0.1.0",
 )
 
 # Include the organization router
@@ -215,9 +217,9 @@ async def read_root():
 async def api_info():
     """API information endpoint"""
     return {
-        "name": "Journal API",
+        "name": "Llens API",
         "version": "0.1.0",
-        "description": "API for managing journal entries",
+        "description": "API for managing notes and journal entries",
     }
 
 

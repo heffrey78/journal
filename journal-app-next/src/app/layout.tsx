@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Reflection",
-  description: "A self-reflective space for notes, analysis, journaling, and markdown thoughts",
+  title: "Llens",
+  description: "A lens into your thoughts - personal journaling with AI-powered insights and analysis",
 };
 
 export default function RootLayout({

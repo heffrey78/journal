@@ -14,13 +14,13 @@ Current search results are presented as a simple list, making it difficult to un
 
 ## Acceptance Criteria
 - [ ] Display search results on an interactive timeline
-- [ ] Show entry distribution across calendar dates
+- [x] Show entry distribution across calendar dates
 - [ ] Allow zooming in/out on different time scales (day, week, month, year)
 - [ ] Highlight days with multiple matching entries
 - [ ] Enable clicking on timeline points to view entries
 - [ ] Show entry density heat map on calendar view
 - [ ] Filter timeline by tags or content types
-- [ ] Support both linear timeline and calendar grid views
+- [x] Support both linear timeline and calendar grid views
 
 ## Technical Details
 - **Visualization**: Timeline charts using D3.js or similar

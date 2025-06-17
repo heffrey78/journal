@@ -29,6 +29,7 @@ class JournalEntry(BaseModel):
         folder: Path for organizing entries into folders/notebooks
         favorite: Boolean indicating whether entry is marked as favorite
         images: List of image IDs associated with this entry
+        source_metadata: Optional metadata about the source of this entry (e.g., chat session info)
     """
 
     id: str = Field(default_factory=generate_unique_entry_id)
@@ -40,6 +41,7 @@ class JournalEntry(BaseModel):
     folder: Optional[str] = None
     favorite: bool = False
     images: List[str] = []
+    source_metadata: Optional[Dict[str, Any]] = None
 
     def update_content(self, new_content: str) -> None:
         """Updates the content and sets updated_at timestamp"""
@@ -103,8 +105,11 @@ class LLMConfig(BaseModel):
 
     Attributes:
         id: Unique identifier (always "default" for single-user setup)
-        model_name: Ollama model to use for text generation
+        model_name: Ollama model to use for text generation (fallback for all operations)
         embedding_model: Ollama model to use for embeddings
+        search_model: Optional specialized model for semantic search operations
+        chat_model: Optional specialized model for chat interactions
+        analysis_model: Optional specialized model for analysis operations
         max_retries: Maximum number of retries for Ollama API calls
         retry_delay: Delay between retries in seconds
         temperature: Controls randomness in generation (0-1)
@@ -117,6 +122,9 @@ class LLMConfig(BaseModel):
     id: str = "default"
     model_name: str = "qwen3:latest"
     embedding_model: str = "nomic-embed-text:latest"
+    search_model: Optional[str] = None
+    chat_model: Optional[str] = None
+    analysis_model: Optional[str] = None
     max_retries: int = 2
     retry_delay: float = 1.0
     temperature: float = 0.7
@@ -159,6 +167,9 @@ class LLMConfig(BaseModel):
             "example": {
                 "model_name": "qwen3:latest",
                 "embedding_model": "nomic-embed-text:latest",
+                "search_model": "qwen3:7b",
+                "chat_model": "qwen3:7b",
+                "analysis_model": "qwen3:32b",
                 "max_retries": 2,
                 "retry_delay": 1.0,
                 "temperature": 0.7,
@@ -192,6 +203,19 @@ class BatchAnalysisRequest(BaseModel):
     prompt_type: str = "weekly"
 
 
+class EntrySummary(BaseModel):
+    """Model for structured output from Ollama summarization."""
+
+    id: Optional[str] = None
+    entry_id: Optional[str] = None
+    summary: str
+    key_topics: List[str]
+    mood: str
+    favorite: bool = False
+    prompt_type: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
 class BatchAnalysis(BaseModel):
     """
     Model for batch analysis of multiple journal entries.
@@ -210,7 +234,7 @@ class BatchAnalysis(BaseModel):
     """
 
     id: str = Field(
-        default_factory=lambda: f"ba-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        default_factory=lambda: f"ba-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
     )
     title: str
     entry_ids: List[str]
@@ -243,6 +267,64 @@ class BatchAnalysis(BaseModel):
         }
 
 
+class Persona(BaseModel):
+    """
+    Represents a chat persona with custom system prompt and characteristics.
+
+    Attributes:
+        id: Unique identifier for the persona
+        name: Display name for the persona
+        description: Short description of the persona's purpose
+        system_prompt: System prompt that defines the persona's behavior
+        icon: Icon name or emoji to represent the persona
+        is_default: Whether this is a built-in default persona
+        created_at: Timestamp when the persona was created
+        updated_at: Timestamp when the persona was last updated
+    """
+
+    id: str = Field(default_factory=lambda: f"persona-{uuid.uuid4().hex[:8]}")
+    name: str
+    description: str
+    system_prompt: str
+    icon: str = "🤖"
+    is_default: bool = False
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        """Pydantic config options"""
+
+        json_schema_extra = {
+            "example": {
+                "id": "persona-abc12345",
+                "name": "Journaling Assistant",
+                "description": "A supportive companion for personal reflection and writing",
+                "system_prompt": "You are a thoughtful journaling assistant...",
+                "icon": "📖",
+                "is_default": True,
+                "created_at": "2025-01-07T12:34:56",
+            }
+        }
+
+
+class PersonaCreate(BaseModel):
+    """Model for creating a new persona."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
+    system_prompt: str = Field(..., min_length=10, max_length=2000)
+    icon: str = Field(default="🤖", max_length=10)
+
+
+class PersonaUpdate(BaseModel):
+    """Model for updating an existing persona."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None, min_length=1, max_length=500)
+    system_prompt: Optional[str] = Field(None, min_length=10, max_length=2000)
+    icon: Optional[str] = Field(None, max_length=10)
+
+
 class ChatSession(BaseModel):
     """
     Represents a chat session with metadata.
@@ -256,6 +338,7 @@ class ChatSession(BaseModel):
         context_summary: Optional summary of earlier conversation for context windowing
         temporal_filter: Optional temporal filter applied to this session
         entry_count: Number of unique entries referenced in this session
+        persona_id: ID of the persona used for this chat session
     """
 
     id: str = Field(
@@ -270,6 +353,7 @@ class ChatSession(BaseModel):
     temporal_filter: Optional[str] = None
     entry_count: int = 0
     model_name: Optional[str] = None
+    persona_id: Optional[str] = None
 
     class Config:
         """Pydantic config options"""
@@ -412,6 +496,35 @@ class ChatConfig(BaseModel):
         }
 
 
+class WebSearchConfig(BaseModel):
+    """Configuration for web search functionality."""
+
+    id: str = "default"
+    enabled: bool = True
+    max_searches_per_minute: int = 10
+    max_results_per_search: int = 5
+    default_region: str = "wt-wt"
+    cache_duration_hours: int = 1
+    enable_news_search: bool = True
+    max_snippet_length: int = 200
+
+    class Config:
+        """Pydantic config options"""
+
+        json_schema_extra = {
+            "example": {
+                "id": "default",
+                "enabled": True,
+                "max_searches_per_minute": 10,
+                "max_results_per_search": 5,
+                "default_region": "wt-wt",
+                "cache_duration_hours": 1,
+                "enable_news_search": True,
+                "max_snippet_length": 200,
+            }
+        }
+
+
 class ChatResponse(BaseModel):
     """
     Response model for streaming chat responses.
@@ -439,3 +552,69 @@ class ChatResponse(BaseModel):
                 "content": "Based on your journal entry from yesterday...",
             }
         }
+
+
+class ChatSearchResult(BaseModel):
+    """
+    Represents a search result for chat sessions.
+
+    Attributes:
+        session: The matching chat session
+        match_type: Type of match ('session_title', 'message_content', 'context_summary')
+        relevance_score: Relevance score for ranking
+        matched_messages: Sample of matching messages (for message content matches)
+        highlighted_snippets: Text snippets with highlighting
+    """
+
+    session: ChatSession
+    match_type: str
+    relevance_score: float = 0.0
+    matched_messages: List[ChatMessage] = []
+    highlighted_snippets: List[str] = []
+
+
+class MessageSearchResult(BaseModel):
+    """
+    Represents a search result for individual messages within a session.
+
+    Attributes:
+        message: The matching chat message
+        highlighted_content: Message content with search terms highlighted
+        relevance_score: Relevance score for ranking
+        context_before: Optional message content before this one for context
+        context_after: Optional message content after this one for context
+    """
+
+    message: ChatMessage
+    highlighted_content: str
+    relevance_score: float = 0.0
+    context_before: Optional[str] = None
+    context_after: Optional[str] = None
+
+
+class PaginatedSearchResults(BaseModel):
+    """
+    Paginated search results for chat sessions.
+
+    Attributes:
+        results: List of search results
+        total: Total number of matching results
+        limit: Number of results per page
+        offset: Number of results skipped
+        query: Original search query
+        has_next: Whether there are more results
+        has_previous: Whether there are previous results
+    """
+
+    results: List[ChatSearchResult]
+    total: int
+    limit: int
+    offset: int
+    query: str
+    has_next: bool = False
+    has_previous: bool = False
+
+    def __post_init__(self):
+        """Calculate pagination flags after initialization"""
+        self.has_next = self.offset + self.limit < self.total
+        self.has_previous = self.offset > 0

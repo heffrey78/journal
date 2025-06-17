@@ -205,7 +205,7 @@ class VectorStorage(BaseStorage):
 
         Args:
             entry_id: ID of the entry to update
-            embeddings: Dictionary mapping chunk_id to embedding vector
+            embeddings: Dictionary mapping chunk_id to embedding vector (list or numpy array)
 
         Returns:
             True if successful, False otherwise
@@ -214,8 +214,15 @@ class VectorStorage(BaseStorage):
         cursor = conn.cursor()
         try:
             for chunk_id, embedding in embeddings.items():
+                # Convert to numpy array if it's a list
+                if isinstance(embedding, list):
+                    embedding = np.array(embedding, dtype=np.float32)
+                else:
+                    # Ensure it's float32 if already numpy array
+                    embedding = embedding.astype(np.float32)
+                
                 # Convert numpy array to bytes for storage
-                embedding_bytes = embedding.astype(np.float32).tobytes()
+                embedding_bytes = embedding.tobytes()
 
                 cursor.execute(
                     "UPDATE vectors SET embedding = ? "
@@ -226,7 +233,9 @@ class VectorStorage(BaseStorage):
             conn.commit()
             return True
         except Exception as e:
-            print(f"Error updating vectors: {e}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error updating vectors for entry {entry_id}: {e}")
             return False
         finally:
             conn.close()

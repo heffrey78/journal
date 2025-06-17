@@ -1,18 +1,34 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import ModelSelector from './ModelSelector';
+import PersonaDropdown from './PersonaDropdown';
+import PersonaIndicator from './PersonaIndicator';
+import SaveConversationDialog from '../dialogs/SaveConversationDialog';
+import InConversationSearch from './InConversationSearch';
 import { Message, EntryReference } from './types';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Download, Search } from 'lucide-react';
+import { ToolActivityIndicator } from './ToolUsageIndicator';
 import { CHAT_API, CONFIG_API } from '@/config/api';
+import { updateChatMessage, deleteChatMessage, updateChatSessionPersona } from '@/api/chat';
 
 interface ChatInterfaceProps {
-  sessionId?: string;
+  sessionId?: string | null;
+  onFirstMessage?: (content: string, personaId?: string) => Promise<void>;
+  isCreatingSession?: boolean;
+  defaultPersona?: any;
 }
 
-export default function ChatInterface({ sessionId: propSessionId }: ChatInterfaceProps) {
+export default function ChatInterface({
+  sessionId: propSessionId,
+  onFirstMessage,
+  isCreatingSession = false,
+  defaultPersona
+}: ChatInterfaceProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -25,8 +41,19 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
   // Session state that can be provided via prop or stored in sessionStorage
   const [sessionId, setSessionId] = useState<string | null>(propSessionId || null);
   // Model selection state
-  const [setDefaultModel] = useState<string | null>(null);
   const [currentSessionModel, setCurrentSessionModel] = useState<string | null>(null);
+  // Save conversation dialog state
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [sessionTitle, setSessionTitle] = useState<string>('');
+  // Persona state - Initialize with default persona for new chats
+  const [sessionPersonaId, setSessionPersonaId] = useState<string | null>(
+    propSessionId === 'new' && defaultPersona ? defaultPersona.id : null
+  );
+  // Tool activity state
+  const [activeTools, setActiveTools] = useState<string[]>([]);
+  const [currentStreamingToolResults, setCurrentStreamingToolResults] = useState<any[]>([]);
+  // In-conversation search state
+  const [showInConversationSearch, setShowInConversationSearch] = useState(false);
 
   // React to changes in session ID (from props or storage)
   useEffect(() => {
@@ -65,7 +92,6 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
         if (response.ok) {
           const config = await response.json();
           if (config && config.model_name) {
-            setDefaultModel(config.model_name);
             // Only set current session model if it's not already set
             if (!currentSessionModel) {
               setCurrentSessionModel(config.model_name);
@@ -80,16 +106,29 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
     };
 
     fetchDefaultModel();
-  }, [currentSessionModel, setDefaultModel]);
+  }, [currentSessionModel]);
 
    // Load messages when session ID changes
   useEffect(() => {
     const loadMessages = async () => {
-      if (!sessionId) return;
+      if (!sessionId || sessionId === 'new') return;
 
       try {
         setLoading(true);
         console.log('Loading messages for session:', sessionId);
+
+        // Load session details first
+        try {
+          const sessionResponse = await fetch(CHAT_API.SESSION(sessionId));
+          if (sessionResponse.ok) {
+            const sessionData = await sessionResponse.json();
+            setSessionTitle(sessionData.title || 'Chat Session');
+            setSessionPersonaId(sessionData.persona_id || null);
+            console.log('Loaded session:', sessionData.title, 'with persona:', sessionData.persona_id);
+          }
+        } catch (sessionError) {
+          console.error('Error loading session details:', sessionError);
+        }
 
         // Use direct connection to backend rather than through Next.js API route
         // This avoids IPv6/IPv4 connection issues
@@ -116,13 +155,19 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
             // Check if we need to fetch references separately
             const hasReferences = msg.metadata && typeof msg.metadata === 'object' && msg.metadata.has_references === true;
 
+            // Extract tool usage information from metadata
+            const toolsUsed = msg.metadata && typeof msg.metadata === 'object' && msg.metadata.tools_used ?
+              msg.metadata.tools_used : [];
+
             return {
               id: msg.id,
               content: msg.content,
               role: msg.role,
               timestamp: new Date(msg.created_at),
               references,
-              has_references: hasReferences
+              has_references: hasReferences,
+              tools_used: toolsUsed,
+              metadata: msg.metadata
             };
           });
 
@@ -200,6 +245,20 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingMessage]);
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+F or Cmd+F to open search
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f' && sessionId && messages.length > 0) {
+        event.preventDefault();
+        setShowInConversationSearch(true);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [sessionId, messages.length]);
+
   // Function to generate a unique ID for messages
   const generateMessageId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -211,6 +270,20 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
     // Clear any previous API errors
     setApiError(null);
+
+    // Handle lazy session creation (when sessionId is null or "new")
+    if ((!sessionId || sessionId === 'new') && onFirstMessage) {
+      try {
+        setLoading(true);
+        await onFirstMessage(content, sessionPersonaId || undefined);
+        return; // The parent component will handle navigation to the new session
+      } catch (error) {
+        console.error('Error creating session with first message:', error);
+        setApiError(error instanceof Error ? error.message : 'Failed to create chat session');
+        setLoading(false);
+        return;
+      }
+    }
 
     // Add user message to the chat
     const userMessage: Message = {
@@ -228,6 +301,8 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
     setIsStreaming(false);
     setCurrentMessageReferences([]);
     setCurrentMessageId(null);
+    setActiveTools([]);
+    setCurrentStreamingToolResults([]);
 
     if (useStreaming) {
       // Use the streaming API
@@ -331,6 +406,24 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
               if (metadata.references) {
                 setCurrentMessageReferences(metadata.references);
               }
+              // Handle tool results for real-time indicators
+              if (metadata.tool_results) {
+                console.log('Received tool results in stream metadata:', metadata.tool_results);
+
+                // Format tool results to match ToolUsage interface
+                const formattedToolResults = metadata.tool_results.map((tool: any) => ({
+                  tool_name: tool.tool_name || 'unknown',
+                  success: tool.success || false,
+                  execution_time_ms: tool.metadata?.execution_time_ms,
+                  result_count: tool.metadata?.result_count,
+                  error: tool.success ? undefined : (tool.error || 'Tool execution failed'),
+                }));
+
+                setCurrentStreamingToolResults(formattedToolResults);
+                // Extract active tool names for indicators
+                const toolNames = metadata.tool_results.map((tool: any) => tool.tool_name);
+                setActiveTools(toolNames);
+              }
               receivedMetadata = true;
               continue;
             } catch (e) {
@@ -383,11 +476,15 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
       role: 'assistant',
       timestamp: new Date(),
       references: currentMessageReferences,
+      tools_used: currentStreamingToolResults,
     };
 
     setMessages((prevMessages) => [...prevMessages, assistantMessage]);
     setStreamingMessage('');
     setIsStreaming(false);
+    // Clear active tools and streaming tool results
+    setActiveTools([]);
+    setCurrentStreamingToolResults([]);
   };
 
   // Send a non-streaming message (fallback or direct use)
@@ -480,23 +577,131 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
     console.log(`Changed model for current session to: ${model}`);
   };
 
+  // Handle persona change
+  const handlePersonaChange = async (personaId: string) => {
+    if (!sessionId || sessionId === 'new') {
+      // For new chats, just update the local state
+      setSessionPersonaId(personaId);
+      console.log(`Set persona for new chat to: ${personaId}`);
+      return;
+    }
+
+    try {
+      console.log(`Changing persona for session ${sessionId} to: ${personaId}`);
+      await updateChatSessionPersona(sessionId, personaId);
+      setSessionPersonaId(personaId);
+      console.log(`Successfully changed persona to: ${personaId}`);
+    } catch (error) {
+      console.error('Failed to update session persona:', error);
+      // Optionally show user-facing error message
+    }
+  };
+
   // Toggle between streaming and non-streaming mode
   const toggleStreamingMode = () => {
     setUseStreaming(!useStreaming);
   };
 
-  // Reset chat session
+  // Reset chat session - redirect to persona selection
   const resetChatSession = () => {
-    // Only clear session storage if we're not using a prop-provided sessionId
-    if (!propSessionId) {
-      sessionStorage.removeItem('chatSessionId');
-      setSessionId(null);
-    }
+    router.push('/chat/new');
+  };
 
-    // Always clear messages and errors
-    setMessages([]);
-    setApiError(null);
-    console.log('Chat session reset');
+  // Handle message edit
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (!sessionId) return;
+
+    try {
+      // Update message locally (optimistic update)
+      setMessages(prevMessages =>
+        prevMessages.map(msg =>
+          msg.id === messageId
+            ? { ...msg, content: newContent, metadata: { ...msg.metadata, edited: true } }
+            : msg
+        )
+      );
+
+      // Call API to update message
+      await updateChatMessage(sessionId, messageId, newContent);
+      console.log(`Message ${messageId} updated successfully`);
+    } catch (error) {
+      console.error('Failed to update message:', error);
+      // Revert on error - reload messages
+      const loadMessages = async () => {
+        try {
+          const response = await fetch(CHAT_API.MESSAGES(sessionId));
+          if (response.ok) {
+            const data = await response.json();
+            const formattedMessages = data.map((msg: Message & { created_at: string; metadata?: Record<string, unknown> }) => ({
+              id: msg.id,
+              content: msg.content,
+              role: msg.role,
+              timestamp: new Date(msg.created_at),
+              references: [],
+              has_references: msg.metadata?.has_references === true,
+              metadata: msg.metadata
+            }));
+            setMessages(formattedMessages);
+          }
+        } catch (err) {
+          console.error('Failed to reload messages:', err);
+        }
+      };
+      loadMessages();
+      throw error;
+    }
+  };
+
+  // Handle message delete
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!sessionId) return;
+
+    try {
+      // Remove message locally (optimistic update)
+      setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
+
+      // Call API to delete message
+      await deleteChatMessage(sessionId, messageId);
+      console.log(`Message ${messageId} deleted successfully`);
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+      // Revert on error - reload messages
+      const loadMessages = async () => {
+        try {
+          const response = await fetch(CHAT_API.MESSAGES(sessionId));
+          if (response.ok) {
+            const data = await response.json();
+            const formattedMessages = data.map((msg: Message & { created_at: string; metadata?: Record<string, unknown> }) => ({
+              id: msg.id,
+              content: msg.content,
+              role: msg.role,
+              timestamp: new Date(msg.created_at),
+              references: [],
+              has_references: msg.metadata?.has_references === true,
+              metadata: msg.metadata
+            }));
+            setMessages(formattedMessages);
+          }
+        } catch (err) {
+          console.error('Failed to reload messages:', err);
+        }
+      };
+      loadMessages();
+      throw error;
+    }
+  };
+
+  // Handle message found via in-conversation search
+  const handleMessageFound = (messageId: string) => {
+    const messageElement = document.getElementById(`message-${messageId}`);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add temporary highlight
+      messageElement.classList.add('bg-yellow-100', 'dark:bg-yellow-900', 'transition-colors');
+      setTimeout(() => {
+        messageElement.classList.remove('bg-yellow-100', 'dark:bg-yellow-900', 'transition-colors');
+      }, 2000);
+    }
   };
 
   return (
@@ -533,9 +738,9 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
         </div>
       )}
 
-      {/* Streaming Mode Toggle */}
+      {/* Header */}
       <div className="px-6 py-3 flex justify-between border-b">
-        <div>
+        <div className="flex items-center space-x-4">
           {sessionId && (
             <button
               onClick={resetChatSession}
@@ -544,18 +749,55 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
               New chat
             </button>
           )}
+          {sessionPersonaId && (
+            <PersonaIndicator
+              personaId={sessionPersonaId}
+              className="border-l pl-4 ml-4"
+            />
+          )}
         </div>
         <div className="flex items-center space-x-4">
-          {/* Model Selector */}
-          {sessionId &&
-            <div className="flex items-center">
+          {/* Search in conversation button */}
+          {sessionId && sessionId !== 'new' && messages.length > 0 && (
+            <button
+              onClick={() => setShowInConversationSearch(true)}
+              disabled={loading || isStreaming}
+              className="flex items-center space-x-1 px-3 py-1 text-sm text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Search in conversation (Ctrl+F)"
+            >
+              <Search className="h-4 w-4" />
+              <span>Search</span>
+            </button>
+          )}
+
+          {/* Save Conversation Button */}
+          {sessionId && sessionId !== 'new' && messages.length > 0 && (
+            <button
+              onClick={() => setShowSaveDialog(true)}
+              disabled={loading || isStreaming}
+              className="flex items-center space-x-1 px-3 py-1 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Save conversation as journal entry"
+            >
+              <Download className="h-4 w-4" />
+              <span>Save</span>
+            </button>
+          )}
+
+          {/* Persona and Model Selectors */}
+          {sessionId && (
+            <div className="flex items-center space-x-4">
+              <PersonaDropdown
+                currentPersonaId={sessionPersonaId}
+                onPersonaChange={handlePersonaChange}
+                disabled={loading || isStreaming}
+              />
               <ModelSelector
                 currentModel={currentSessionModel}
                 onModelChange={handleModelChange}
                 disabled={loading || isStreaming}
               />
             </div>
-          }
+          )}
           <span className="text-sm mr-2 text-foreground">Streaming mode:</span>
           <label className="relative inline-flex items-center cursor-pointer">
             <input
@@ -578,8 +820,15 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
         ) : (
           <div className="space-y-6">
             {messages.map((message) => (
-              <div key={message.id} className="space-y-2">
-                <ChatMessage message={message} />
+              <div key={message.id} id={`message-${message.id}`} className="space-y-2">
+                <ChatMessage
+                  message={message}
+                  sessionId={sessionId || undefined}
+                  sessionTitle={sessionTitle}
+                  canSave={true}
+                  onEdit={handleEditMessage}
+                  onDelete={handleDeleteMessage}
+                />
                 {/* Remove duplicate EntryReferences since ChatMessage now handles this */}
               </div>
             ))}
@@ -595,6 +844,9 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
                     timestamp: new Date(),
                     references: currentMessageReferences,
                   }}
+                  sessionId={sessionId || undefined}
+                  sessionTitle={sessionTitle}
+                  canSave={false}
                 />
                 {/* Remove duplicate EntryReferences since ChatMessage now handles this */}
               </div>
@@ -602,13 +854,31 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
             {/* Loading indicator */}
             {loading && !isStreaming && (
-              <div className="flex items-center space-x-3 mt-6 text-gray-500">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+              <div className="space-y-4 mt-6">
+                {/* Tool activity indicators */}
+                {activeTools.length > 0 && (
+                  <div className="space-y-2">
+                    {activeTools.map((toolName, index) => (
+                      <ToolActivityIndicator
+                        key={index}
+                        isActive={true}
+                        toolName={toolName}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Loading indicator */}
+                <div className="flex items-center space-x-3 text-gray-500">
+                  <div className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <span className="text-sm">
+                    {activeTools.length > 0 ? 'Processing...' : 'Thinking...'}
+                  </span>
                 </div>
-                <span className="text-sm">Thinking...</span>
               </div>
             )}
 
@@ -619,8 +889,27 @@ export default function ChatInterface({ sessionId: propSessionId }: ChatInterfac
 
       {/* Input area */}
       <div className="border-t p-6 bg-background">
-        <ChatInput onSendMessage={handleSendMessage} isLoading={loading} />
+        <ChatInput onSendMessage={handleSendMessage} isLoading={loading || isCreatingSession} />
       </div>
+
+      {/* Save Conversation Dialog */}
+      <SaveConversationDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        sessionId={sessionId || ''}
+        sessionTitle={sessionTitle}
+        messages={messages}
+      />
+
+      {/* In-conversation search */}
+      {sessionId && (
+        <InConversationSearch
+          sessionId={sessionId}
+          isOpen={showInConversationSearch}
+          onClose={() => setShowInConversationSearch(false)}
+          onMessageFound={handleMessageFound}
+        />
+      )}
     </div>
   );
 }

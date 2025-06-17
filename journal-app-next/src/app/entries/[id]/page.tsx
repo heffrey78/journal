@@ -7,7 +7,7 @@ import AdvancedMarkdownEditor from '@/components/markdown/AdvancedMarkdownEditor
 import MarkdownRenderer from '@/components/markdown/MarkdownRenderer';
 import EntryAnalysis from '@/components/entries/EntryAnalysis'; // Import the EntryAnalysis component
 import { Button } from '@/components/ui/button';
-import { entriesApi } from '@/lib/api';
+import { entriesApi, organizationApi } from '@/lib/api';
 import { JournalEntry } from '@/lib/types';
 import { format } from 'date-fns';
 import Container from '@/components/layout/Container';
@@ -27,6 +27,8 @@ export default function EntryDetailPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
+  const [folder, setFolder] = useState('');
+  const [availableFolders, setAvailableFolders] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export default function EntryDetailPage() {
         setTitle(data.title);
         setContent(data.content);
         setTags(data.tags.join(', '));
+        setFolder(data.folder || '');
       } catch (err) {
         console.error('Failed to fetch entry:', err);
         setError('Failed to load entry. Please try again later.');
@@ -52,6 +55,22 @@ export default function EntryDetailPage() {
       fetchEntry();
     }
   }, [id]);
+
+  // Fetch available folders when entering edit mode
+  useEffect(() => {
+    const fetchFolders = async () => {
+      try {
+        const folders = await organizationApi.getFolders();
+        setAvailableFolders(folders);
+      } catch (err) {
+        console.error('Failed to fetch folders:', err);
+      }
+    };
+
+    if (isEditing) {
+      fetchFolders();
+    }
+  }, [isEditing]);
 
   const handleSave = async () => {
     if (!entry) return;
@@ -67,6 +86,7 @@ export default function EntryDetailPage() {
         title: title || 'Untitled Entry',
         content,
         tags: tagsArray,
+        folder: folder || undefined,
       });
 
       setEntry(updatedEntry);
@@ -183,21 +203,36 @@ export default function EntryDetailPage() {
                 <MarkdownRenderer content={entry.content} className="markdown-enhanced" />
               </div>
 
-              {entry.tags && entry.tags.length > 0 && (
-                <div className="mt-4 mb-6">
-                  <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Tags</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {entry.tags.map(tag => (
-                      <span
-                        key={tag}
-                        className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full"
-                      >
-                        {tag}
+              {(entry.tags && entry.tags.length > 0) || entry.folder ? (
+                <div className="mt-4 mb-6 space-y-4">
+                  {entry.folder && (
+                    <div>
+                      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Folder</h2>
+                      <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full flex items-center w-fit">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-5l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                        {entry.folder}
                       </span>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+                  {entry.tags && entry.tags.length > 0 && (
+                    <div>
+                      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Tags</h2>
+                      <div className="flex flex-wrap gap-2">
+                        {entry.tags.map(tag => (
+                          <span
+                            key={tag}
+                            className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1 rounded-full"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              ) : null}
 
               {/* Add the EntryAnalysis component */}
               <EntryAnalysis entryId={id} />
@@ -209,8 +244,8 @@ export default function EntryDetailPage() {
               </div>
             </>
           ) : (
-            <form 
-              className="space-y-6" 
+            <form
+              className="space-y-6"
               onSubmit={(e) => {
                 e.preventDefault(); // Prevent default form submission
               }}
@@ -255,6 +290,25 @@ export default function EntryDetailPage() {
                   placeholder="e.g. personal, work, ideas"
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              <div>
+                <label htmlFor="folder" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Folder (optional)
+                </label>
+                <select
+                  id="folder"
+                  value={folder}
+                  onChange={(e) => setFolder(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No folder</option>
+                  {availableFolders.map((folderName) => (
+                    <option key={folderName} value={folderName}>
+                      {folderName}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex justify-end gap-3">

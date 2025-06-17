@@ -27,15 +27,30 @@ class EntryStorage(BaseStorage):
         conn = self.get_db_connection()
         cursor = conn.cursor()
 
-        # Check if we need to perform a migration
-        cursor.execute("PRAGMA table_info(entries)")
-        columns = {row[1] for row in cursor.fetchall()}
+        # Check if entries table exists
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='entries'"
+        )
+        table_exists = cursor.fetchone() is not None
 
-        if (
-            "folder" not in columns
-            or "favorite" not in columns
-            or "images" not in columns
-        ):
+        if table_exists:
+            # Check if we need to perform a migration
+            cursor.execute("PRAGMA table_info(entries)")
+            columns = {row[1] for row in cursor.fetchall()}
+
+            if (
+                "folder" not in columns
+                or "favorite" not in columns
+                or "images" not in columns
+                or "source_metadata" not in columns
+            ):
+                migration_needed = True
+            else:
+                migration_needed = False
+        else:
+            migration_needed = False
+
+        if migration_needed:
             # Migration needed - create new schema
             cursor.execute("BEGIN TRANSACTION")
             try:
@@ -54,7 +69,8 @@ class EntryStorage(BaseStorage):
                         tags TEXT,
                         folder TEXT,
                         favorite INTEGER DEFAULT 0,
-                        images TEXT
+                        images TEXT,
+                        source_metadata TEXT
                     )
                     """
                 )
@@ -62,11 +78,11 @@ class EntryStorage(BaseStorage):
                 # Copy data from old table to new, with defaults for new columns
                 cursor.execute(
                     """
-                    INSERT INTO entries 
-                    (id, title, file_path, created_at, 
-                    updated_at, tags, folder, favorite, images)
-                    SELECT id, title, file_path, created_at, 
-                    updated_at, tags, NULL, 0, '[]'
+                    INSERT INTO entries
+                    (id, title, file_path, created_at,
+                    updated_at, tags, folder, favorite, images, source_metadata)
+                    SELECT id, title, file_path, created_at,
+                    updated_at, tags, NULL, 0, '[]', NULL
                     FROM entries_old
                     """
                 )
@@ -76,7 +92,7 @@ class EntryStorage(BaseStorage):
                 cursor.execute("COMMIT")
                 print(
                     "Database migration complete: Added folder, favorite, "
-                    "and images fields"
+                    "images, and source_metadata fields"
                 )
             except Exception as e:
                 cursor.execute("ROLLBACK")
@@ -95,7 +111,7 @@ class EntryStorage(BaseStorage):
                     """
                 )
         else:
-            # Table exists with all needed columns
+            # Table doesn't exist or has all needed columns - create with full schema
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS entries (
@@ -107,7 +123,8 @@ class EntryStorage(BaseStorage):
                     tags TEXT,
                     folder TEXT,
                     favorite INTEGER DEFAULT 0,
-                    images TEXT
+                    images TEXT,
+                    source_metadata TEXT
                 )
                 """
             )
@@ -159,7 +176,7 @@ class EntryStorage(BaseStorage):
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     entry.id,
                     entry.title,
@@ -170,6 +187,9 @@ class EntryStorage(BaseStorage):
                     entry.folder,
                     1 if entry.favorite else 0,
                     json.dumps(entry.images),
+                    json.dumps(entry.source_metadata)
+                    if entry.source_metadata
+                    else None,
                 ),
             )
             conn.commit()
@@ -198,8 +218,8 @@ class EntryStorage(BaseStorage):
         conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
-            query = """SELECT id, title, file_path, created_at, updated_at, tags, "
-            "folder, favorite, images
+            query = """SELECT id, title, file_path, created_at, updated_at, tags,
+            folder, favorite, images, source_metadata
                     FROM entries WHERE id = ?"""
             cursor.execute(query, (entry_id,))
             row = cursor.fetchone()
@@ -218,6 +238,7 @@ class EntryStorage(BaseStorage):
                 folder,
                 favorite,
                 images_json,
+                source_metadata_json,
             ) = row
 
             # Read content from file
@@ -243,6 +264,9 @@ class EntryStorage(BaseStorage):
                 folder=folder,
                 favorite=bool(favorite),
                 images=json.loads(images_json) if images_json else [],
+                source_metadata=json.loads(source_metadata_json)
+                if source_metadata_json
+                else None,
             )
 
             # Add to cache
@@ -290,6 +314,9 @@ class EntryStorage(BaseStorage):
 
         if "images" in update_data:
             entry.images = update_data["images"]
+
+        if "source_metadata" in update_data:
+            entry.source_metadata = update_data["source_metadata"]
 
         # Always update the updated_at timestamp
         entry.updated_at = datetime.now()

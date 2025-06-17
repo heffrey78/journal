@@ -14,8 +14,10 @@ from app.models import (
     JournalEntry,
 )
 from app.storage.chat import ChatStorage
+from app.storage.personas import PersonaStorage
 from app.llm_service import LLMService
 from app.temporal_parser import TemporalParser
+from app.tools import ToolRegistry, JournalSearchTool, WebSearchTool
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -32,28 +34,50 @@ class ChatService:
     4. Tracking citations to journal entries
     """
 
-    def __init__(self, chat_storage: ChatStorage, llm_service: LLMService):
+    def __init__(
+        self, chat_storage: ChatStorage, llm_service: LLMService, storage_manager=None
+    ):
         """
         Initialize the chat service.
 
         Args:
             chat_storage: Storage manager for chat data
             llm_service: LLM service for generating responses
+            storage_manager: Optional storage manager for accessing other storage components
         """
         self.chat_storage = chat_storage
         self.llm_service = llm_service
         self.temporal_parser = TemporalParser()
+        self.persona_storage = PersonaStorage()
+
+        # Initialize tool registry
+        self.tool_registry = ToolRegistry()
+
+        # Register available tools
+        journal_search_tool = JournalSearchTool(chat_storage.base_dir, llm_service)
+        self.tool_registry.register(journal_search_tool, enabled=True)
+
+        # Register web search tool with config storage access
+        config_storage = None
+        if storage_manager and hasattr(storage_manager, "config"):
+            config_storage = storage_manager.config
+        web_search_tool = WebSearchTool(config_storage)
+        self.tool_registry.register(web_search_tool, enabled=True)
+
+        logger.info(
+            f"Initialized chat service with {len(self.tool_registry.list_tools())} tools"
+        )
 
     def process_message(
         self, message: ChatMessage
     ) -> Tuple[ChatMessage, List[EntryReference]]:
         """
-        Process a user message and generate a response.
+        Process a user message and generate a response using tool calling framework.
 
         This function:
-        1. Retrieves relevant entries based on message content
-        2. Constructs context from conversation history
-        3. Generates a response using the LLM
+        1. Analyzes the message to determine what tools to use
+        2. Executes relevant tools to gather context
+        3. Generates a response using the LLM with tool results
         4. Saves the response and references
 
         Args:
@@ -64,35 +88,148 @@ class ChatService:
         """
         session_id = message.session_id
 
-        # Get session to check for temporal filters
+        # Get session and configuration
         session = self.chat_storage.get_session(session_id)
         if not session:
             raise ValueError(f"Chat session {session_id} not found")
 
-        # Get chat configuration
         config = self.chat_storage.get_chat_config()
 
-        # Find relevant entries for this message using enhanced retrieval
-        references = self._enhanced_entry_retrieval(message, session, config)
-
-        # Get conversation history
+        # Prepare context for tool analysis
         conversation_history = self._prepare_conversation_history(session_id, config)
+        context = {
+            "session_id": session_id,
+            "conversation_history": conversation_history,
+            "session_context": session.context_summary or "",
+            "recent_messages": [
+                msg for msg in conversation_history[-3:] if msg.get("role") == "user"
+            ],
+        }
 
-        # Add the new message to history
-        conversation_history.append({"role": "user", "content": message.content})
-
-        # Check for model override in message metadata, use session model as fallback
-        model_name = None
-        if message.metadata and "model_override" in message.metadata:
-            model_name = message.metadata["model_override"]
-            logger.info(f"Using model override from message: {model_name}")
-        elif session.model_name:
-            model_name = session.model_name
-            logger.info(f"Using model from session: {model_name}")
-
-        response_text = self._generate_response(
-            conversation_history, references, session, config, model_name
+        # Use LLM to analyze what tools should be called
+        tool_analysis = self.llm_service.analyze_message_for_tools(
+            message.content, context
         )
+
+        # Execute tools if recommended
+        tool_results = []
+        references = []
+
+        if tool_analysis.get("should_use_tools", False):
+            logger.info(f"Tool analysis suggests using tools: {tool_analysis}")
+
+            for tool_rec in tool_analysis.get("recommended_tools", []):
+                tool_name = tool_rec.get("tool_name")
+                confidence = tool_rec.get("confidence", 0.0)
+                suggested_query = tool_rec.get("suggested_query", message.content)
+
+                # Only execute tools with sufficient confidence
+                if confidence >= 0.5:
+                    try:
+                        logger.info(
+                            f"Executing tool {tool_name} with confidence {confidence}"
+                        )
+
+                        # Prepare tool parameters
+                        tool_params = {"query": suggested_query}
+
+                        # Add session-specific filters if available
+                        if session.temporal_filter:
+                            date_filter = self.temporal_parser.parse_temporal_query(
+                                session.temporal_filter
+                            )
+                            if date_filter:
+                                tool_params["date_filter"] = date_filter
+
+                        # Execute the tool (synchronous wrapper)
+                        result = self._execute_tool_sync(
+                            tool_name, tool_params, context
+                        )
+
+                        tool_results.append(
+                            {
+                                "tool_name": tool_name,
+                                "success": result.success,
+                                "data": result.data,
+                                "metadata": result.metadata,
+                            }
+                        )
+
+                        # Extract references from journal search results
+                        if (
+                            tool_name == "journal_search"
+                            and result.success
+                            and result.data
+                            and result.data.get("results")
+                        ):
+                            for i, entry_data in enumerate(result.data["results"]):
+                                reference = EntryReference(
+                                    message_id=message.id,
+                                    entry_id=entry_data["id"],
+                                    similarity_score=entry_data.get("relevance", 0.0),
+                                    chunk_index=0,
+                                    entry_title=entry_data.get("title", ""),
+                                    entry_snippet=entry_data.get("content_preview", ""),
+                                )
+                                references.append(reference)
+
+                    except Exception as e:
+                        logger.error(f"Error executing tool {tool_name}: {e}")
+                        tool_results.append(
+                            {"tool_name": tool_name, "success": False, "error": str(e)}
+                        )
+                else:
+                    logger.info(
+                        f"Skipping tool {tool_name} due to low confidence: {confidence}"
+                    )
+        else:
+            logger.info("No tools recommended for this message")
+
+        # Generate response using tool results
+        if tool_results:
+            response_text = self.llm_service.synthesize_response_with_tools(
+                message.content, tool_results, context
+            )
+        else:
+            # Fallback to standard response generation
+            conversation_history.append({"role": "user", "content": message.content})
+
+            # Check for model override
+            model_name = None
+            if message.metadata and "model_override" in message.metadata:
+                model_name = message.metadata["model_override"]
+            elif session.model_name:
+                model_name = session.model_name
+
+            response_text = self.llm_service.generate_response_with_model(
+                conversation_history, model_name
+            )
+
+        # Prepare metadata including tool usage information
+        metadata = {"has_references": len(references) > 0, "tools_used": []}
+
+        # Add tool usage information to metadata
+        if tool_results:
+            for tool_result in tool_results:
+                tool_info = {
+                    "tool_name": tool_result.get("tool_name", "unknown"),
+                    "success": tool_result.get("success", False),
+                    "execution_time_ms": tool_result.get("metadata", {}).get(
+                        "execution_time_ms"
+                    ),
+                    "result_count": tool_result.get("metadata", {}).get("result_count"),
+                    "error": tool_result.get("error")
+                    if not tool_result.get("success")
+                    else None,
+                }
+
+                # Include result data for enhanced UI display
+                if tool_result.get("success") and tool_result.get("data"):
+                    data = tool_result["data"]
+                    if "results" in data:
+                        tool_info["results"] = data["results"]
+
+                metadata["tools_used"].append(tool_info)
 
         # Create and save assistant message
         assistant_message = ChatMessage(
@@ -100,7 +237,7 @@ class ChatService:
             role="assistant",
             content=response_text,
             created_at=datetime.now(),
-            metadata={"has_references": len(references) > 0},
+            metadata=metadata,
         )
 
         # Save the assistant message
@@ -115,11 +252,14 @@ class ChatService:
             # Save the references
             self.chat_storage.add_message_entry_references(saved_message.id, references)
 
+        # Check if session should be auto-named
+        self._check_and_generate_session_title(session_id)
+
         return saved_message, references
 
     def stream_message(
         self, message: ChatMessage
-    ) -> Tuple[Iterator[str], List[EntryReference], str]:
+    ) -> Tuple[Iterator[str], List[EntryReference], str, List[Dict[str, Any]]]:
         """
         Process a user message and generate a streaming response.
 
@@ -133,7 +273,7 @@ class ChatService:
             message: The user message to process
 
         Returns:
-            Tuple containing (response_iterator, references, message_id)
+            Tuple containing (response_iterator, references, message_id, tool_results)
         """
         session_id = message.session_id
 
@@ -145,27 +285,158 @@ class ChatService:
         # Get chat configuration
         config = self.chat_storage.get_chat_config()
 
-        # Find relevant entries for this message using enhanced retrieval
-        references = self._enhanced_entry_retrieval(message, session, config)
-
-        # Get conversation history
+        # Prepare context for tool analysis
         conversation_history = self._prepare_conversation_history(session_id, config)
+        context = {
+            "session_id": session_id,
+            "conversation_history": conversation_history,
+            "session_context": session.context_summary or "",
+            "recent_messages": [
+                msg for msg in conversation_history[-3:] if msg.get("role") == "user"
+            ],
+        }
+
+        # Use LLM to analyze what tools should be called
+        tool_analysis = self.llm_service.analyze_message_for_tools(
+            message.content, context
+        )
+
+        # Execute tools if recommended
+        tool_results = []
+        references = []
+
+        if tool_analysis.get("should_use_tools", False):
+            logger.info(f"Tool analysis suggests using tools: {tool_analysis}")
+
+            for tool_rec in tool_analysis.get("recommended_tools", []):
+                tool_name = tool_rec.get("tool_name")
+                confidence = tool_rec.get("confidence", 0.0)
+                suggested_query = tool_rec.get("suggested_query", message.content)
+
+                # Only execute tools with sufficient confidence
+                if confidence >= 0.5:
+                    try:
+                        logger.info(
+                            f"Executing tool {tool_name} with confidence {confidence}"
+                        )
+
+                        # Prepare tool parameters
+                        tool_params = {"query": suggested_query}
+
+                        # Add session-specific filters if available
+                        if session.temporal_filter:
+                            date_filter = self.temporal_parser.parse_temporal_query(
+                                session.temporal_filter
+                            )
+                            if date_filter:
+                                tool_params["date_filter"] = date_filter
+
+                        # Execute the tool (synchronous wrapper)
+                        result = self._execute_tool_sync(
+                            tool_name, tool_params, context
+                        )
+
+                        tool_results.append(
+                            {
+                                "tool_name": tool_name,
+                                "success": result.success,
+                                "data": result.data,
+                                "metadata": result.metadata,
+                            }
+                        )
+
+                        # Extract references from journal search results
+                        if (
+                            tool_name == "journal_search"
+                            and result.success
+                            and result.data
+                            and result.data.get("results")
+                        ):
+                            for i, entry_data in enumerate(result.data["results"]):
+                                reference = EntryReference(
+                                    message_id="",  # Will be set after message creation
+                                    entry_id=entry_data["id"],
+                                    similarity_score=entry_data.get("relevance", 0.0),
+                                    chunk_index=0,
+                                    entry_title=entry_data.get("title", ""),
+                                    entry_snippet=entry_data.get("content_preview", ""),
+                                )
+                                references.append(reference)
+
+                    except Exception as e:
+                        logger.error(f"Error executing tool {tool_name}: {e}")
+                        tool_results.append(
+                            {"tool_name": tool_name, "success": False, "error": str(e)}
+                        )
+                else:
+                    logger.info(
+                        f"Skipping tool {tool_name} due to low confidence: {confidence}"
+                    )
+        else:
+            logger.info("No tools recommended for this message")
+
+        # Prepare metadata including tool usage information
+        metadata = {
+            "has_references": len(references) > 0,
+            "is_streaming": True,
+            "tools_used": [],
+        }
+
+        # Add tool usage information to metadata
+        if tool_results:
+            for tool_result in tool_results:
+                tool_info = {
+                    "tool_name": tool_result.get("tool_name", "unknown"),
+                    "success": tool_result.get("success", False),
+                    "execution_time_ms": tool_result.get("metadata", {}).get(
+                        "execution_time_ms"
+                    ),
+                    "result_count": tool_result.get("metadata", {}).get("result_count"),
+                    "error": tool_result.get("error")
+                    if not tool_result.get("success")
+                    else None,
+                }
+
+                # Include result data for enhanced UI display
+                if tool_result.get("success") and tool_result.get("data"):
+                    data = tool_result["data"]
+                    if "results" in data:
+                        tool_info["results"] = data["results"]
+
+                metadata["tools_used"].append(tool_info)
+
+        # Update conversation history with tool results context
+        if tool_results:
+            # Format all tool results for context
+            tool_context = self._format_tool_results_for_context(tool_results)
+
+            # Add reference context to the system message if there are references
+            if references and len(references) > 0:
+                # Find the system message
+                for hist_msg in conversation_history:
+                    if hist_msg["role"] == "system":
+                        # Add reference context
+                        reference_context = self._format_references_for_context(
+                            references
+                        )
+                        hist_msg["content"] += (
+                            f"\nHere are some relevant journal entries to reference:\n"
+                            f"{reference_context}"
+                        )
+                        break
+
+            # Add web search results and other tool results as a separate context
+            if tool_context:
+                # Add tool results after the user message to ensure they're used
+                conversation_history.append(
+                    {
+                        "role": "system",
+                        "content": f"Search results to answer the user's question:\n{tool_context}\n\nPlease use these search results to provide an accurate, detailed response.",
+                    }
+                )
 
         # Add the new message to history
         conversation_history.append({"role": "user", "content": message.content})
-
-        # Add reference context to the system message if there are references
-        if references and len(references) > 0:
-            # Find the system message
-            for message in conversation_history:
-                if message["role"] == "system":
-                    # Add reference context
-                    reference_context = self._format_references_for_context(references)
-                    message["content"] += (
-                        f"\nHere are some relevant journal entries to reference:\n"
-                        f"{reference_context}"
-                    )
-                    break
 
         # Create a placeholder for the assistant message
         assistant_message = ChatMessage(
@@ -173,7 +444,7 @@ class ChatService:
             role="assistant",
             content="",  # Empty content to be filled in by streaming
             created_at=datetime.now(),
-            metadata={"has_references": len(references) > 0, "is_streaming": True},
+            metadata=metadata,
         )
 
         # Save the placeholder message to get an ID
@@ -194,7 +465,7 @@ class ChatService:
             message_id, conversation_history, config
         )
 
-        return response_iterator, references, message_id
+        return response_iterator, references, message_id, tool_results
 
     def _find_relevant_entries(
         self, message: ChatMessage, session: ChatSession, config: ChatConfig
@@ -323,20 +594,37 @@ class ChatService:
         Returns:
             List of message dictionaries in the format expected by the LLM
         """
-        # Get recent messages from the session
+        # Get session and messages
+        session = self.chat_storage.get_session(session_id)
         messages = self.chat_storage.get_messages(session_id)
 
+        # Determine system prompt - use persona if available, fallback to config
+        system_prompt = config.system_prompt
+        if session and session.persona_id:
+            try:
+                persona = self.persona_storage.get_persona(session.persona_id)
+                if persona:
+                    system_prompt = persona.system_prompt
+                    logger.debug(
+                        f"Using persona '{persona.name}' for session {session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Persona {session.persona_id} not found, using default system prompt"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error loading persona {session.persona_id}: {str(e)}, using default system prompt"
+                )
+
         # Start with system message
-        conversation = [{"role": "system", "content": config.system_prompt}]
+        conversation = [{"role": "system", "content": system_prompt}]
 
         # Check if context windowing is enabled and we have enough messages
         if (
             config.use_context_windowing
             and len(messages) > config.min_messages_for_summary
         ):
-            # Get session for context summary
-            session = self.chat_storage.get_session(session_id)
-
             # Estimate total tokens in all messages
             estimated_tokens = self._estimate_token_count(messages)
 
@@ -462,8 +750,7 @@ class ChatService:
                 pass
 
             # Add a note about the available reference
-            text += "\n\nNote: This response was informed by your "
-            f"journal entry from {date_str}."
+            text += f"\n\nNote: This response was informed by your journal entry from {date_str}."
 
         return text
 
@@ -567,6 +854,11 @@ class ChatService:
             )
             self.chat_storage.update_message_content(message_id, accumulated_response)
 
+            # Check if session should be auto-named
+            message = self.chat_storage.get_message(message_id)
+            if message:
+                self._check_and_generate_session_title(message.session_id)
+
         except Exception as e:
             error_msg = f"Error in streaming response: {str(e)}"
             logger.error(error_msg)
@@ -581,6 +873,51 @@ class ChatService:
                 )
             except Exception as update_error:
                 logger.error(f"Error updating message with error: {update_error}")
+
+    def _format_tool_results_for_context(
+        self, tool_results: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Format tool results for inclusion in LLM context.
+
+        Args:
+            tool_results: List of tool execution results
+
+        Returns:
+            Formatted tool results text
+        """
+        if not tool_results:
+            return ""
+
+        context = ""
+        for result in tool_results:
+            if result.get("success") and result.get("data"):
+                tool_name = result.get("tool_name", "unknown")
+                data = result["data"]
+
+                # Skip journal search as it's handled separately via references
+                if tool_name == "journal_search":
+                    continue
+
+                if tool_name == "web_search" and data.get("results"):
+                    context += f"\n\nWeb search results for '{data.get('query', 'your query')}':\n"
+                    context += "=" * 50 + "\n"
+                    for idx, web_result in enumerate(data["results"], 1):
+                        context += f"\nResult {idx}:\n"
+                        context += f"Title: {web_result.get('title', 'Untitled')}\n"
+                        context += f"Source: {web_result.get('source', 'Unknown')}\n"
+                        context += (
+                            f"Content: {web_result.get('snippet', 'No content')}\n"
+                        )
+                        if web_result.get("url"):
+                            context += f"URL: {web_result['url']}\n"
+                        context += "-" * 30 + "\n"
+                    context += "=" * 50
+                else:
+                    # Handle other tool types generically
+                    context += f"\n\n{tool_name} results: {data}\n"
+
+        return context
 
     def _format_references_for_context(self, references: List[EntryReference]) -> str:
         """
@@ -1559,3 +1896,580 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error clearing session summary: {str(e)}")
             return False
+
+    def _check_and_generate_session_title(self, session_id: str) -> None:
+        """
+        Check if a session needs auto-naming and generate a title if appropriate.
+
+        This method:
+        1. Checks if the session already has a meaningful title
+        2. Counts the number of message exchanges
+        3. Generates a title after 2-3 exchanges using LLM
+        4. Optionally updates title if topic has shifted significantly
+
+        Args:
+            session_id: The chat session ID
+        """
+        try:
+            # Get the session
+            session = self.chat_storage.get_session(session_id)
+            if not session:
+                logger.warning(f"Session {session_id} not found for auto-naming")
+                return
+
+            # Get all messages in the session
+            messages = self.chat_storage.get_messages(session_id)
+
+            # Count message exchanges (user + assistant pairs)
+            user_messages = [msg for msg in messages if msg.role == "user"]
+            assistant_messages = [msg for msg in messages if msg.role == "assistant"]
+            exchanges = min(len(user_messages), len(assistant_messages))
+
+            # Check if session already has a meaningful title
+            has_meaningful_title = (
+                session.title
+                and not session.title.startswith("Chat Session")
+                and not session.title.startswith("Chat on")
+            )
+
+            # For initial auto-naming
+            if not has_meaningful_title:
+                # We want at least 2 exchanges (4 messages total) before auto-naming
+                if exchanges < 2:
+                    logger.debug(
+                        f"Session {session_id} has only {exchanges} exchanges, skipping auto-naming"
+                    )
+                    return
+
+                logger.debug(f"Session {session_id} needs initial auto-naming")
+            else:
+                # For topic shift detection, only check if we have many exchanges
+                if (
+                    exchanges < 8
+                ):  # Check for topic shifts after significant conversation
+                    return
+
+                # Check if topic has shifted significantly
+                if not self._has_topic_shifted(messages, session.title):
+                    logger.debug(
+                        f"Session {session_id} topic has not shifted significantly"
+                    )
+                    return
+
+                logger.debug(f"Session {session_id} topic has shifted, updating title")
+
+            # Generate title using LLM service
+            conversation_messages = []
+            for msg in messages:
+                conversation_messages.append({"role": msg.role, "content": msg.content})
+
+            generated_title = self.llm_service.generate_session_title(
+                conversation_messages
+            )
+
+            # Update the session with the generated title
+            session.title = generated_title
+            self.chat_storage.update_session(session)
+
+            action = "Updated" if has_meaningful_title else "Auto-generated"
+            logger.info(f"{action} title for session {session_id}: '{generated_title}'")
+
+        except Exception as e:
+            logger.error(f"Error in auto-naming session {session_id}: {e}")
+            # Don't raise the exception - auto-naming is a nice-to-have feature
+
+    def _has_topic_shifted(
+        self, messages: List[ChatMessage], current_title: str
+    ) -> bool:
+        """
+        Detect if the conversation topic has shifted significantly from the current title.
+
+        This method:
+        1. Takes recent messages (last 6-8 messages)
+        2. Generates a potential new title for recent conversation
+        3. Compares similarity to current title
+        4. Returns True if topics are significantly different
+
+        Args:
+            messages: All messages in the session
+            current_title: Current session title
+
+        Returns:
+            True if topic has shifted significantly, False otherwise
+        """
+        try:
+            # Only look at recent messages for topic shift detection
+            recent_messages = messages[-8:] if len(messages) > 8 else messages
+
+            # Need at least 4 recent messages to detect topic shift
+            if len(recent_messages) < 4:
+                return False
+
+            # Generate a title for just the recent conversation
+            conversation_messages = []
+            for msg in recent_messages:
+                conversation_messages.append({"role": msg.role, "content": msg.content})
+
+            recent_title = self.llm_service.generate_session_title(
+                conversation_messages
+            )
+
+            # Compare titles using simple keyword overlap
+            current_keywords = set(current_title.lower().split())
+            recent_keywords = set(recent_title.lower().split())
+
+            # Remove common stop words
+            stop_words = {
+                "chat",
+                "session",
+                "discussion",
+                "conversation",
+                "about",
+                "on",
+                "the",
+                "a",
+                "an",
+                "and",
+                "or",
+                "but",
+            }
+            current_keywords -= stop_words
+            recent_keywords -= stop_words
+
+            # Calculate similarity (Jaccard similarity)
+            if not current_keywords and not recent_keywords:
+                return False
+
+            intersection = len(current_keywords & recent_keywords)
+            union = len(current_keywords | recent_keywords)
+
+            if union == 0:
+                return False
+
+            similarity = intersection / union
+
+            # If similarity is below threshold, consider it a topic shift
+            topic_shift_threshold = 0.3  # Adjust as needed
+            has_shifted = similarity < topic_shift_threshold
+
+            if has_shifted:
+                logger.info(
+                    f"Topic shift detected: '{current_title}' vs '{recent_title}' (similarity: {similarity:.3f})"
+                )
+
+            return has_shifted
+
+        except Exception as e:
+            logger.error(f"Error detecting topic shift: {e}")
+            return False  # Conservative approach - don't update on error
+
+    def format_conversation_for_entry(
+        self,
+        session_id: str,
+        message_ids: Optional[List[str]] = None,
+        title: str = "",
+        additional_notes: Optional[str] = None,
+    ) -> str:
+        """
+        Format a chat conversation as markdown content for a journal entry.
+
+        Args:
+            session_id: The chat session ID
+            message_ids: Optional list of specific message IDs to include
+            title: Title for the journal entry
+            additional_notes: Optional additional notes to include
+
+        Returns:
+            Formatted markdown content for the journal entry
+        """
+        try:
+            # Get session and messages
+            session = self.chat_storage.get_session(session_id)
+            if not session:
+                raise ValueError(f"Chat session {session_id} not found")
+
+            if message_ids:
+                # Get specific messages
+                all_messages = self.chat_storage.get_messages(session_id)
+                messages = [msg for msg in all_messages if msg.id in message_ids]
+                if not messages:
+                    raise ValueError("No valid messages found with provided IDs")
+                # Sort by creation time to maintain order
+                messages.sort(key=lambda x: x.created_at)
+            else:
+                # Get all messages
+                messages = self.chat_storage.get_messages(session_id)
+                if not messages:
+                    raise ValueError("No messages found in this conversation")
+
+            # Build the content
+            content = f"# {title}\n\n"
+            content += f"*Saved from chat session: {session.title or session_id}*\n"
+            content += f"*Session created: {session.created_at.strftime('%B %d, %Y at %H:%M')}*\n\n"
+
+            if additional_notes:
+                content += f"## Notes\n\n{additional_notes.strip()}\n\n"
+
+            content += "## Conversation\n\n"
+
+            for i, message in enumerate(messages):
+                role_label = "**User:**" if message.role == "user" else "**Assistant:**"
+                timestamp = message.created_at.strftime("%H:%M")
+                content += f"{role_label} *(at {timestamp})*\n\n{message.content}\n\n"
+
+                # Add separator between messages, but not after the last one
+                if i < len(messages) - 1:
+                    content += "---\n\n"
+
+            # Add metadata section
+            content += "\n## Metadata\n\n"
+            content += f"- **Original Session ID:** `{session_id}`\n"
+            content += f"- **Messages Saved:** {len(messages)}\n"
+
+            if messages:
+                content += f"- **Date Range:** {messages[0].created_at.strftime('%Y-%m-%d %H:%M')} to {messages[-1].created_at.strftime('%Y-%m-%d %H:%M')}\n"
+
+            content += (
+                f"- **Saved on:** {datetime.now().strftime('%Y-%m-%d at %H:%M')}\n"
+            )
+
+            # Add chat-derived indicator
+            if session.temporal_filter:
+                content += f"- **Temporal Filter:** {session.temporal_filter}\n"
+
+            if session.entry_count > 0:
+                content += f"- **Journal Entries Referenced:** {session.entry_count}\n"
+
+            return content
+
+        except Exception as e:
+            logger.error(f"Error formatting conversation for entry: {e}")
+            raise ValueError(f"Failed to format conversation: {str(e)}")
+
+    def save_conversation_as_entry(
+        self,
+        session_id: str,
+        title: str,
+        message_ids: Optional[List[str]] = None,
+        additional_notes: Optional[str] = None,
+        tags: List[str] = None,
+        folder: Optional[str] = None,
+    ) -> str:
+        """
+        Save a chat conversation as a journal entry.
+
+        Args:
+            session_id: The chat session ID
+            title: Title for the journal entry
+            message_ids: Optional list of specific message IDs to save
+            additional_notes: Optional additional notes to include
+            tags: List of tags for the journal entry
+            folder: Optional folder for the journal entry
+
+        Returns:
+            The ID of the created journal entry
+        """
+        try:
+            from app.storage.entries import EntryStorage
+            from app.models import JournalEntry
+
+            # Format the conversation content
+            content = self.format_conversation_for_entry(
+                session_id=session_id,
+                message_ids=message_ids,
+                title=title,
+                additional_notes=additional_notes,
+            )
+
+            # Prepare tags (add default chat-related tags)
+            entry_tags = tags or []
+            entry_tags.extend(["chat-conversation", "saved-chat"])
+            # Remove duplicates while preserving order
+            seen = set()
+            entry_tags = [
+                tag for tag in entry_tags if not (tag in seen or seen.add(tag))
+            ]
+
+            # Get session for metadata
+            session = self.chat_storage.get_session(session_id)
+
+            # Prepare source metadata to track chat origins
+            source_metadata = {
+                "source_type": "chat_conversation",
+                "original_session_id": session_id,
+                "session_title": session.title if session else None,
+                "session_created_at": session.created_at.isoformat()
+                if session
+                else None,
+                "message_count": len(self.chat_storage.get_messages(session_id))
+                if message_ids is None
+                else len(message_ids),
+                "temporal_filter": session.temporal_filter if session else None,
+                "saved_at": datetime.now().isoformat(),
+                "partial_save": message_ids
+                is not None,  # True if only specific messages were saved
+            }
+
+            # Create journal entry
+            entry = JournalEntry(
+                title=title,
+                content=content,
+                tags=entry_tags,
+                folder=folder,
+                created_at=datetime.now(),
+                source_metadata=source_metadata,
+            )
+
+            # Save the entry
+            entry_storage = EntryStorage(self.chat_storage.base_dir)
+            entry_id = entry_storage.save_entry(entry)
+
+            logger.info(
+                f"Successfully saved chat conversation {session_id} as journal entry {entry_id}"
+            )
+            return entry_id
+
+        except Exception as e:
+            logger.error(f"Error saving conversation as entry: {e}")
+            raise ValueError(f"Failed to save conversation as entry: {str(e)}")
+
+    def _execute_tool_sync(
+        self,
+        tool_name: str,
+        parameters: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Synchronous wrapper for tool execution.
+
+        Args:
+            tool_name: Name of the tool to execute
+            parameters: Parameters to pass to the tool
+            context: Optional context information
+
+        Returns:
+            ToolResult from the tool execution
+        """
+        import asyncio
+
+        try:
+            # Get or create event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Execute the tool
+            if loop.is_running():
+                # If loop is already running, we need to run in a thread to avoid blocking
+                import concurrent.futures
+                import threading
+
+                def run_async_tool():
+                    # Create a new event loop in the thread
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(
+                            self.tool_registry.execute_tool(
+                                tool_name, parameters, context
+                            )
+                        )
+                    finally:
+                        new_loop.close()
+
+                # Run the async tool in a separate thread
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async_tool)
+                    return future.result(timeout=30)  # 30 second timeout
+            else:
+                return loop.run_until_complete(
+                    self.tool_registry.execute_tool(tool_name, parameters, context)
+                )
+
+        except Exception as e:
+            logger.error(f"Error in synchronous tool execution: {e}")
+            return self._execute_tool_fallback(tool_name, parameters, context)
+
+    def _execute_tool_fallback(
+        self,
+        tool_name: str,
+        parameters: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Fallback synchronous tool execution using direct tool access.
+
+        Args:
+            tool_name: Name of the tool to execute
+            parameters: Parameters to pass to the tool
+            context: Optional context information
+
+        Returns:
+            ToolResult from the tool execution
+        """
+        from app.tools.base import ToolResult, ToolError
+
+        try:
+            tool = self.tool_registry.get_tool(tool_name)
+            if not tool:
+                return ToolResult(success=False, error=f"Tool {tool_name} not found")
+
+            if not self.tool_registry.is_enabled(tool_name):
+                return ToolResult(success=False, error=f"Tool {tool_name} is disabled")
+
+            # Validate parameters
+            validated_params = tool.validate_parameters(parameters)
+
+            # For journal_search tool, we can execute it synchronously
+            if tool_name == "journal_search":
+                query = validated_params["query"]
+                limit = validated_params.get("limit", 5)
+                date_filter = validated_params.get("date_filter")
+                tags = validated_params.get("tags")
+
+                # Execute search synchronously using LLM service if available
+                if self.llm_service:
+                    try:
+                        search_results = self.llm_service.semantic_search(
+                            query=query, limit=limit, date_filter=date_filter
+                        )
+
+                        # Format results
+                        formatted_results = []
+                        for result in search_results:
+                            # Handle different result formats from semantic search
+                            if "entry" in result:
+                                entry = result["entry"]
+                                formatted_result = {
+                                    "id": entry.id if hasattr(entry, "id") else "",
+                                    "title": entry.title
+                                    if hasattr(entry, "title")
+                                    else "",
+                                    "content_preview": (
+                                        entry.content[:300] + "..."
+                                        if len(entry.content) > 300
+                                        else entry.content
+                                    )
+                                    if hasattr(entry, "content")
+                                    else "",
+                                    "date": str(entry.created_at)[:10]
+                                    if hasattr(entry, "created_at") and entry.created_at
+                                    else "Unknown",
+                                    "tags": entry.tags
+                                    if hasattr(entry, "tags")
+                                    else [],
+                                    "relevance": round(
+                                        result.get("similarity_score", 0.0), 2
+                                    ),
+                                    "source": "semantic",
+                                }
+                            else:
+                                formatted_result = {
+                                    "id": result.get("entry_id", ""),
+                                    "title": result.get("title", ""),
+                                    "content_preview": result.get("content", "")[:300]
+                                    + "..."
+                                    if len(result.get("content", "")) > 300
+                                    else result.get("content", ""),
+                                    "date": result.get("created_at", "")[:10]
+                                    if result.get("created_at")
+                                    else "Unknown",
+                                    "tags": result.get("tags", []),
+                                    "relevance": round(
+                                        result.get("similarity_score", 0.0), 2
+                                    ),
+                                    "source": "semantic",
+                                }
+                            formatted_results.append(formatted_result)
+
+                        return ToolResult(
+                            success=True,
+                            data={
+                                "results": formatted_results,
+                                "query": query,
+                                "total_found": len(formatted_results),
+                                "search_type": "semantic",
+                            },
+                            metadata={
+                                "tool_name": tool_name,
+                                "search_parameters": validated_params,
+                                "result_count": len(formatted_results),
+                            },
+                        )
+
+                    except Exception as e:
+                        logger.error(f"Error in fallback journal search: {e}")
+                        return ToolResult(success=False, error=f"Search failed: {e}")
+                else:
+                    return ToolResult(
+                        success=False,
+                        error="LLM service not available for semantic search",
+                    )
+
+            # For web_search tool, we can try to execute it synchronously
+            elif tool_name == "web_search":
+                logger.info(
+                    f"Attempting synchronous web search fallback for query: {validated_params.get('query', '')}"
+                )
+                try:
+                    # Import here to avoid circular imports
+                    import requests
+                    from duckduckgo_search import DDGS
+
+                    query = validated_params["query"]
+                    num_results = validated_params.get("num_results", 5)
+
+                    # Perform synchronous web search
+                    results = []
+                    with DDGS() as ddgs:
+                        search_results = list(
+                            ddgs.text(keywords=query, max_results=num_results)
+                        )
+
+                    # Format results to match expected structure
+                    for result in search_results:
+                        formatted_result = {
+                            "title": result.get("title", ""),
+                            "url": result.get("href", ""),
+                            "snippet": result.get("body", "")[:200],
+                            "source": result.get("href", "")
+                            .split("//")[-1]
+                            .split("/")[0]
+                            if result.get("href")
+                            else "",
+                        }
+                        results.append(formatted_result)
+
+                    logger.info(f"Web search fallback found {len(results)} results")
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "results": results,
+                            "query": query,
+                            "total_found": len(results),
+                            "search_type": "general",
+                        },
+                        metadata={
+                            "tool_name": tool_name,
+                            "result_count": len(results),
+                            "fallback_method": "sync",
+                        },
+                    )
+                except Exception as e:
+                    logger.error(f"Web search fallback failed: {e}")
+                    return ToolResult(
+                        success=False, error=f"Web search fallback failed: {e}"
+                    )
+
+            # For other tools, return an error
+            logger.warning(f"No fallback available for tool: {tool_name}")
+            return ToolResult(
+                success=False,
+                error=f"Synchronous execution not supported for tool {tool_name}",
+            )
+
+        except Exception as e:
+            logger.error(f"Error in fallback tool execution: {e}")
+            return ToolResult(success=False, error=f"Tool execution failed: {e}")

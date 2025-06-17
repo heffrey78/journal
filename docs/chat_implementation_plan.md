@@ -2,21 +2,30 @@
 
 ## Critical Missing Elements (Fix These First)
 
-### 1. Response Streaming
+### 1. Response Streaming ✅ COMPLETED
 **Problem**: Ollama takes 5-30s for responses. Users will think the app is broken.
 **Solution**: Implement SSE (Server-Sent Events) for streaming responses.
+**Status**: Implemented in chat_routes.py with `/sessions/{session_id}/stream` endpoint
 
-### 2. Citation/Attribution System
+### 2. Citation/Attribution System ✅ COMPLETED
 **Problem**: Users need to know which journal entries informed the chat response.
 **Solution**: Return entry references with responses and make them clickable.
+**Status**: Implemented with EntryReference model and message reference tracking
 
-### 3. Chat Session Lifecycle
+### 3. Chat Session Lifecycle ✅ COMPLETED
 **Problem**: When do chats end? How do we handle partial conversations?
 **Solution**: Define session timeout (30 min), auto-save on navigation, explicit "New Chat" action.
+**Status**: Implemented with session management and lazy creation
 
-### 4. Caching Strategy
+### 4. Caching Strategy ✅ COMPLETED
 **Problem**: Re-running embeddings for every chat query is expensive.
 **Solution**: Cache conversation state, pre-compute temporal indices.
+**Status**: Implemented with chat context management and reference caching
+
+### 5. Chat Search Functionality 🚧 IN PROGRESS
+**Problem**: Users can't find specific conversations or content in their chat history.
+**Solution**: Implement comprehensive search across chat titles, message content, and metadata.
+**Priority**: High - Essential for chat history management
 
 ## Implementation Plan by Component
 
@@ -111,6 +120,25 @@ async def get_session_referenced_entries(
     session_id: str
 ) -> List[EntryReference]:
     """Get all entries referenced in session"""
+
+@router.get("/search")
+async def search_chat_sessions(
+    q: str,
+    limit: int = 20,
+    offset: int = 0,
+    sort_by: str = "relevance",
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None
+) -> PaginatedSearchResults:
+    """Search chat sessions and messages"""
+
+@router.get("/sessions/{session_id}/search")
+async def search_within_session(
+    session_id: str,
+    q: str,
+    limit: int = 50
+) -> List[MessageSearchResult]:
+    """Search within a specific chat session"""
 ```
 
 ### Service Layer
@@ -207,6 +235,74 @@ class ChatService:
             relevant_chunks,
             session_context
         )
+
+class ChatSearchService:
+    def __init__(self, storage: ChatStorage):
+        self.storage = storage
+
+    async def search_sessions(
+        self,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+        sort_by: str = "relevance",
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None
+    ) -> PaginatedSearchResults:
+        """Search across chat sessions and messages"""
+
+        # Perform full-text search using SQLite FTS
+        search_results = await self._full_text_search(
+            query, limit, offset, date_from, date_to
+        )
+
+        # Apply relevance scoring and sorting
+        if sort_by == "relevance":
+            search_results = self._rank_by_relevance(search_results, query)
+        elif sort_by == "date":
+            search_results = sorted(search_results, key=lambda x: x.last_accessed, reverse=True)
+
+        # Get total count for pagination
+        total_count = await self._count_search_results(query, date_from, date_to)
+
+        return PaginatedSearchResults(
+            results=search_results,
+            total=total_count,
+            limit=limit,
+            offset=offset,
+            query=query
+        )
+
+    async def search_within_session(
+        self,
+        session_id: str,
+        query: str,
+        limit: int = 50
+    ) -> List[MessageSearchResult]:
+        """Search within a specific chat session"""
+
+        messages = await self.storage.get_messages(session_id)
+
+        # Simple text matching with highlighting
+        results = []
+        for message in messages:
+            if query.lower() in message.content.lower():
+                highlighted_content = self._highlight_matches(message.content, query)
+                results.append(MessageSearchResult(
+                    message=message,
+                    highlighted_content=highlighted_content,
+                    relevance_score=self._calculate_message_relevance(message, query)
+                ))
+
+        # Sort by relevance and limit results
+        results.sort(key=lambda x: x.relevance_score, reverse=True)
+        return results[:limit]
+
+    def _highlight_matches(self, content: str, query: str) -> str:
+        """Add highlighting markup to matched terms"""
+        import re
+        pattern = re.compile(re.escape(query), re.IGNORECASE)
+        return pattern.sub(r'<mark>\g<0></mark>', content)
 ```
 
 ### Frontend Components
@@ -309,32 +405,46 @@ class ChatConfig(BaseModel):
 
 ## Implementation Order
 
-1. **Database Schema** (1 day)
+### Phase 1: Core Chat Infrastructure ✅ COMPLETED
+1. **Database Schema** (1 day) ✅
    - Create tables, test migrations
 
-2. **Basic Chat API** (2 days)
+2. **Basic Chat API** (2 days) ✅
    - Session CRUD, message saving
 
-3. **Context Management Service** (3 days)
+3. **Context Management Service** (3 days) ✅
    - Implement moving window + chunking
 
-4. **Temporal Parsing** (2 days)
+4. **Temporal Parsing** (2 days) ✅
    - NLP date extraction, filtering logic
 
-5. **Streaming Response** (2 days)
+5. **Streaming Response** (2 days) ✅
    - SSE implementation, error handling
 
-6. **Frontend Chat UI** (3 days)
+6. **Frontend Chat UI** (3 days) ✅
    - Chat interface, history view
 
-7. **Citations System** (2 days)
+7. **Citations System** (2 days) ✅
    - Entry references, clickable links
 
-8. **Configuration UI** (1 day)
+8. **Configuration UI** (1 day) ✅
    - Settings page for chat config
 
-9. **Testing & Polish** (2 days)
-   - Full test suite, edge cases
+### Phase 2: Chat Search Implementation 🚧 CURRENT
+9. **Search Infrastructure** (2 days)
+   - SQLite FTS setup, search indexing
+
+10. **Search API Development** (2 days)
+    - Search endpoints, filtering, pagination
+
+11. **Frontend Search Components** (2 days)
+    - Search UI, real-time search, results display
+
+12. **Search Integration** (1 day)
+    - Integrate search into chat interface
+
+13. **Testing & Polish** (1 day)
+    - Search-specific tests, performance optimization
 
 ## Performance Considerations
 

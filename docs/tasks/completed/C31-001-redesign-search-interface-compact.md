@@ -13,15 +13,15 @@
 The current search interface takes up significant screen space and displays all options at once, which can be overwhelming and inefficient. Users need a more streamlined interface where advanced options are collapsible and the overall design is more compact. This redesign is the first step before moving search functionality to the Entries page.
 
 ## Acceptance Criteria
-- [ ] Search interface has a compact default view showing only essential elements
-- [ ] Advanced search options are collapsible/expandable
-- [ ] Filter sections (date, tags, folders) can be individually collapsed
-- [ ] Search results section is visually distinct and optimized for scanning
-- [ ] Interface maintains functionality while reducing visual footprint by at least 40%
-- [ ] Collapsed state preferences are persisted in local storage
-- [ ] Mobile-responsive design that works well on small screens
-- [ ] Smooth animations for expand/collapse actions
-- [ ] Clear visual indicators for collapsed vs expanded states
+- [x] Search interface has a compact default view showing only essential elements
+- [x] Advanced search options are collapsible/expandable
+- [x] Filter sections (date, tags, folders) can be individually collapsed
+- [x] Search results section is visually distinct and optimized for scanning
+- [x] Interface maintains functionality while reducing visual footprint by at least 40%
+- [x] Collapsed state preferences are persisted in local storage
+- [x] Mobile-responsive design that works well on small screens
+- [x] Smooth animations for expand/collapse actions
+- [x] Clear visual indicators for collapsed vs expanded states
 
 ## Technical Details
 - **Components affected**:

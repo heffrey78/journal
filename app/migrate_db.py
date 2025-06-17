@@ -38,15 +38,39 @@ def migrate_database(db_path="./journal_data/journal.db"):
         existing_tables = [row[0] for row in cursor.fetchall()]
         logger.info(f"Existing tables: {', '.join(existing_tables) or 'none'}")
 
-        # Check if config table exists
+        # Check if entries table exists (required for foreign keys)
+        if "entries" not in existing_tables:
+            logger.info("Creating entries table")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS entries (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT,
+                    tags TEXT,
+                    folder TEXT,
+                    favorite INTEGER DEFAULT 0,
+                    images TEXT,
+                    source_metadata TEXT
+                )
+                """
+            )
+            logger.info("entries table created successfully")
+
+        # Check if config table exists and update schema
         if "config" not in existing_tables:
-            logger.info("Creating config table")
+            logger.info("Creating config table with full schema")
             cursor.execute(
                 """
             CREATE TABLE IF NOT EXISTS config (
                 id TEXT PRIMARY KEY,
                 model_name TEXT NOT NULL,
                 embedding_model TEXT NOT NULL,
+                search_model TEXT,
+                chat_model TEXT,
+                analysis_model TEXT,
                 max_retries INTEGER NOT NULL,
                 retry_delay REAL NOT NULL,
                 temperature REAL NOT NULL,
@@ -57,16 +81,50 @@ def migrate_database(db_path="./journal_data/journal.db"):
             """
             )
             logger.info("Config table created successfully")
+
+            # Insert default config record
+            logger.info("Inserting default config record")
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO config VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "default",
+                    "qwen3:latest",
+                    "nomic-embed-text:latest",
+                    None,  # search_model
+                    None,  # chat_model
+                    None,  # analysis_model
+                    2,  # max_retries
+                    1.0,  # retry_delay
+                    0.7,  # temperature
+                    1000,  # max_tokens
+                    "You are a helpful journaling assistant.",  # system_prompt
+                    0.5,  # min_similarity
+                ),
+            )
+            logger.info("Default config record inserted successfully")
         else:
-            # Check if min_similarity column exists in config table
+            # Check existing schema and add missing columns
             cursor.execute("PRAGMA table_info(config)")
             columns = [info[1] for info in cursor.fetchall()]
-            if "min_similarity" not in columns:
-                logger.info("Adding min_similarity column to config table")
-                cursor.execute(
-                    "ALTER TABLE config ADD COLUMN min_similarity REAL DEFAULT 0.5"
-                )
-                logger.info("min_similarity column added successfully")
+
+            # Add missing columns individually
+            missing_columns = [
+                ("min_similarity", "REAL DEFAULT 0.5"),
+                ("search_model", "TEXT"),
+                ("chat_model", "TEXT"),
+                ("analysis_model", "TEXT"),
+            ]
+
+            for col_name, col_def in missing_columns:
+                if col_name not in columns:
+                    logger.info(f"Adding {col_name} column to config table")
+                    cursor.execute(
+                        f"ALTER TABLE config ADD COLUMN {col_name} {col_def}"
+                    )
+                    print(f"Added column {col_name} to config table")
+                    logger.info(f"{col_name} column added successfully")
 
         # Check if prompt_types table exists
         if "prompt_types" not in existing_tables:
@@ -85,20 +143,46 @@ def migrate_database(db_path="./journal_data/journal.db"):
             )
             logger.info("prompt_types table created successfully")
 
-            # Populate with default prompt types
-            logger.info("Populating default prompt types")
-            # Get default config ID
-            cursor.execute("SELECT id FROM config LIMIT 1")
-            row = cursor.fetchone()
-            config_id = row[0] if row else "default"
+        # Ensure we have a default config record before creating prompt types
+        cursor.execute("SELECT COUNT(*) FROM config WHERE id = 'default'")
+        config_exists = cursor.fetchone()[0] > 0
 
+        if not config_exists:
+            logger.info("Inserting default config record for prompt types")
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO config VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "default",
+                    "qwen3:latest",
+                    "nomic-embed-text:latest",
+                    None,  # search_model
+                    None,  # chat_model
+                    None,  # analysis_model
+                    2,  # max_retries
+                    1.0,  # retry_delay
+                    0.7,  # temperature
+                    1000,  # max_tokens
+                    "You are a helpful journaling assistant.",  # system_prompt
+                    0.5,  # min_similarity
+                ),
+            )
+            logger.info("Default config record inserted for prompt types")
+
+        # Check if prompt_types need to be populated
+        cursor.execute("SELECT COUNT(*) FROM prompt_types WHERE config_id = 'default'")
+        prompt_types_exist = cursor.fetchone()[0] > 0
+
+        if not prompt_types_exist:
+            logger.info("Populating default prompt types")
             # Use default prompt types from LLMConfig
             default_config = LLMConfig()
             for pt in default_config.prompt_types:
                 cursor.execute(
-                    "INSERT INTO prompt_types (id, config_id, name, prompt) "
+                    "INSERT OR REPLACE INTO prompt_types (id, config_id, name, prompt) "
                     "VALUES (?, ?, ?, ?)",
-                    (pt.id, config_id, pt.name, pt.prompt),
+                    (pt.id, "default", pt.name, pt.prompt),
                 )
             logger.info("Default prompt types added successfully")
 
@@ -240,19 +324,27 @@ def migrate_database(db_path="./journal_data/journal.db"):
             )
             logger.info("chat_message_entries message_id index created successfully")
 
-        # Check if chat_config table exists
+        # Check if chat_config table exists and update schema
         if "chat_config" not in existing_tables:
-            logger.info("Creating chat_config table")
+            logger.info("Creating chat_config table with full schema")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS chat_config (
                     id TEXT PRIMARY KEY DEFAULT 'default',
                     system_prompt TEXT NOT NULL,
-                    max_context_tokens INTEGER DEFAULT 4096,
-                    temperature REAL DEFAULT 0.7,
-                    retrieval_limit INTEGER DEFAULT 10,
-                    chunk_size INTEGER DEFAULT 500,
-                    conversation_summary_threshold INTEGER DEFAULT 2000
+                    temperature REAL NOT NULL DEFAULT 0.7,
+                    max_history INTEGER NOT NULL DEFAULT 10,
+                    retrieval_limit INTEGER NOT NULL DEFAULT 5,
+                    chunk_size INTEGER NOT NULL DEFAULT 500,
+                    chunk_overlap INTEGER NOT NULL DEFAULT 100,
+                    use_enhanced_retrieval BOOLEAN NOT NULL DEFAULT 1,
+                    max_tokens INTEGER NOT NULL DEFAULT 2048,
+                    max_context_tokens INTEGER NOT NULL DEFAULT 4096,
+                    conversation_summary_threshold INTEGER NOT NULL DEFAULT 2000,
+                    context_window_size INTEGER NOT NULL DEFAULT 10,
+                    use_context_windowing BOOLEAN NOT NULL DEFAULT 1,
+                    min_messages_for_summary INTEGER NOT NULL DEFAULT 6,
+                    summary_prompt TEXT NOT NULL DEFAULT 'Summarize the key points of this conversation so far in 3-4 sentences:'
                 )
                 """
             )
@@ -264,21 +356,58 @@ def migrate_database(db_path="./journal_data/journal.db"):
             cursor.execute(
                 """
                 INSERT INTO chat_config (
-                    id, system_prompt, max_context_tokens, temperature,
-                    retrieval_limit, chunk_size, conversation_summary_threshold
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    id, system_prompt, temperature, max_history, retrieval_limit,
+                    chunk_size, chunk_overlap, use_enhanced_retrieval, max_tokens,
+                    max_context_tokens, conversation_summary_threshold, context_window_size,
+                    use_context_windowing, min_messages_for_summary, summary_prompt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     default_chat_config.id,
                     default_chat_config.system_prompt,
-                    default_chat_config.max_context_tokens,
                     default_chat_config.temperature,
+                    default_chat_config.max_history,
                     default_chat_config.retrieval_limit,
                     default_chat_config.chunk_size,
+                    default_chat_config.chunk_overlap,
+                    default_chat_config.use_enhanced_retrieval,
+                    default_chat_config.max_tokens,
+                    default_chat_config.max_context_tokens,
                     default_chat_config.conversation_summary_threshold,
+                    default_chat_config.context_window_size,
+                    default_chat_config.use_context_windowing,
+                    default_chat_config.min_messages_for_summary,
+                    default_chat_config.summary_prompt,
                 ),
             )
             logger.info("Default chat configuration added successfully")
+        else:
+            # Check existing schema and add missing columns for chat_config
+            cursor.execute("PRAGMA table_info(chat_config)")
+            chat_config_columns = [info[1] for info in cursor.fetchall()]
+
+            # Add missing columns individually
+            missing_chat_columns = [
+                ("max_history", "INTEGER NOT NULL DEFAULT 10"),
+                ("chunk_overlap", "INTEGER NOT NULL DEFAULT 100"),
+                ("use_enhanced_retrieval", "BOOLEAN NOT NULL DEFAULT 1"),
+                ("max_tokens", "INTEGER NOT NULL DEFAULT 2048"),
+                ("context_window_size", "INTEGER NOT NULL DEFAULT 10"),
+                ("use_context_windowing", "BOOLEAN NOT NULL DEFAULT 1"),
+                ("min_messages_for_summary", "INTEGER NOT NULL DEFAULT 6"),
+                (
+                    "summary_prompt",
+                    "TEXT NOT NULL DEFAULT 'Summarize the key points of this conversation so far in 3-4 sentences:'",
+                ),
+            ]
+
+            for col_name, col_def in missing_chat_columns:
+                if col_name not in chat_config_columns:
+                    logger.info(f"Adding {col_name} column to chat_config table")
+                    cursor.execute(
+                        f"ALTER TABLE chat_config ADD COLUMN {col_name} {col_def}"
+                    )
+                    logger.info(f"{col_name} column added successfully")
 
         # Verify all tables were created properly
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")

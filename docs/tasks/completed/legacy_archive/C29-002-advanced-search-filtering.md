@@ -13,13 +13,13 @@
 Current search functionality is basic and doesn't provide filtering capabilities, making it difficult to find specific entries in large journals.
 
 ## Acceptance Criteria
-- [ ] Add date range filtering (from/to dates)
-- [ ] Add tag-based filtering (include/exclude specific tags)
-- [ ] Add content length filtering (short/medium/long entries)
-- [ ] Add entry type filtering if multiple types exist
+- [x] Add date range filtering (from/to dates)
+- [x] Add tag-based filtering (include/exclude specific tags)
+- [x] Add content length filtering (short/medium/long entries)
+- [x] Add entry type filtering if multiple types exist
 - [ ] Combine filters with AND/OR logic
-- [ ] Persist filter preferences in user session
-- [ ] Add filter reset functionality
+- [x] Persist filter preferences in user session
+- [x] Add filter reset functionality
 
 ## Technical Details
 - **Components**: Search UI, API endpoints, database queries

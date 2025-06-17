@@ -44,14 +44,8 @@ if DEPENDENCIES_AVAILABLE:
         original_init = StorageManager.__init__
 
         def test_init(self):
-            self.base_dir = TEST_DATA_DIR
-            self.entries_dir = os.path.join(TEST_DATA_DIR, "entries")
-            self.db_path = os.path.join(TEST_DATA_DIR, "journal.db")
-            self._entry_cache = {}  # Add missing cache attribute
-            self._tags_cache = []  # Add missing tags cache
-            self._cache_loaded = False  # Add missing cache loaded flag
-            os.makedirs(self.entries_dir, exist_ok=True)
-            self._init_sqlite()
+            # Initialize with test directory - this will call the real __init__ with the test directory
+            original_init(self, TEST_DATA_DIR)
 
         StorageManager.__init__ = test_init
 

@@ -1166,7 +1166,7 @@ class StorageManager:
         Returns:
             List of EntrySummary objects
         """
-        from app.llm_service import EntrySummary
+        from app.models import EntrySummary
 
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

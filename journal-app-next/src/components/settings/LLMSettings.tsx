@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 const defaultLLMConfig: LLMConfig = {
   model_name: 'llama3',
   embedding_model: 'nomic-embed-text',
+  search_model: null,
+  chat_model: null,
+  analysis_model: null,
   temperature: 0.7,
   max_tokens: 1000,
   max_retries: 2,
@@ -296,6 +299,88 @@ const LLMSettings: React.FC<LLMSettingsProps> = ({ onSaveComplete }) => {
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           The model used for generating embeddings for semantic search.
         </p>
+      </div>
+
+      {/* Specialized Model Configuration Section */}
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Specialized Models</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Configure different models for specific operations. Leave empty to use the default text generation model.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label htmlFor="search-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Search Model:
+            </label>
+            <select
+              id="search-model"
+              value={config.search_model || ''}
+              onChange={(e) => setConfig({...config, search_model: e.target.value || null})}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Use Default Model</option>
+              {availableModels.length > 0 ? (
+                availableModels.map(model => (
+                  <option key={model} value={model}>{model}</option>
+                ))
+              ) : (
+                config.search_model && <option value={config.search_model}>{config.search_model}</option>
+              )}
+            </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Fast model for semantic search operations.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="chat-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Chat Model:
+            </label>
+            <select
+              id="chat-model"
+              value={config.chat_model || ''}
+              onChange={(e) => setConfig({...config, chat_model: e.target.value || null})}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Use Default Model</option>
+              {availableModels.length > 0 ? (
+                availableModels.map(model => (
+                  <option key={model} value={model}>{model}</option>
+                ))
+              ) : (
+                config.chat_model && <option value={config.chat_model}>{config.chat_model}</option>
+              )}
+            </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Conversational model for chat interactions.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="analysis-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Analysis Model:
+            </label>
+            <select
+              id="analysis-model"
+              value={config.analysis_model || ''}
+              onChange={(e) => setConfig({...config, analysis_model: e.target.value || null})}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Use Default Model</option>
+              {availableModels.length > 0 ? (
+                availableModels.map(model => (
+                  <option key={model} value={model}>{model}</option>
+                ))
+              ) : (
+                config.analysis_model && <option value={config.analysis_model}>{config.analysis_model}</option>
+              )}
+            </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Detailed model for entry analysis and summarization.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div>

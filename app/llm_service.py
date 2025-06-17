@@ -8,10 +8,12 @@ embedding generation and structured outputs.
 import ollama
 import logging
 import json
+import time
+import random
 from typing import List, Dict, Any, Optional, Callable, Iterator, Union
 from pydantic import BaseModel
 from app.storage import StorageManager
-from app.models import LLMConfig, BatchAnalysis, JournalEntry
+from app.models import LLMConfig, BatchAnalysis, JournalEntry, EntrySummary
 
 # Configure logging
 logging.basicConfig(
@@ -50,14 +52,55 @@ class BatchAnalysisError(LLMServiceError):
     pass
 
 
-class EntrySummary(BaseModel):
-    """Model for structured output from Ollama summarization."""
+class CUDAError(LLMServiceError):
+    """Exception raised when CUDA-related errors occur."""
 
-    summary: str
-    key_topics: List[str]
-    mood: str
-    favorite: bool = False
-    prompt_type: Optional[str] = None
+    pass
+
+
+class CircuitBreakerOpen(LLMServiceError):
+    """Exception raised when circuit breaker is open."""
+
+    pass
+
+
+class CircuitBreaker:
+    """Circuit breaker implementation for GPU operations."""
+
+    def __init__(self, failure_threshold: int = 5, timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = "closed"  # closed, open, half-open
+
+    def is_available(self) -> bool:
+        """Check if the circuit breaker allows operations."""
+        if self.state == "closed":
+            return True
+        elif self.state == "open":
+            if time.time() - self.last_failure_time > self.timeout:
+                self.state = "half-open"
+                return True
+            return False
+        else:  # half-open
+            return True
+
+    def record_success(self):
+        """Record a successful operation."""
+        self.failure_count = 0
+        self.state = "closed"
+
+    def record_failure(self):
+        """Record a failed operation."""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.failure_count >= self.failure_threshold:
+            self.state = "open"
+            logger.warning(
+                f"Circuit breaker opened after {self.failure_count} failures"
+            )
 
 
 class LLMService:
@@ -90,6 +133,9 @@ class LLMService:
         # Set instance variables from config
         self.model_name = self.config.model_name
         self.embedding_model = self.config.embedding_model
+        self.search_model = self.config.search_model
+        self.chat_model = self.config.chat_model
+        self.analysis_model = self.config.analysis_model
         self.max_retries = self.config.max_retries
         self.retry_delay = self.config.retry_delay
         self.temperature = self.config.temperature
@@ -97,8 +143,108 @@ class LLMService:
         self.system_prompt = self.config.system_prompt
         self.min_similarity = self.config.min_similarity
 
+        # Initialize circuit breaker for GPU operations
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, timeout=30)
+
         # Verify Ollama connection on initialization
         self._verify_ollama_connection()
+
+    def _is_cuda_error(self, error_message: str) -> bool:
+        """Check if an error message indicates a CUDA-related failure."""
+        cuda_indicators = [
+            "cuda error",
+            "illegal memory access",
+            "ggml_backend_cuda",
+            "cudastreamsynchro",
+            "cuda device",
+            "gpu memory",
+            "out of memory",
+        ]
+        error_lower = str(error_message).lower()
+        return any(indicator in error_lower for indicator in cuda_indicators)
+
+    def _execute_with_resilience(
+        self, operation_func, operation_name: str, *args, **kwargs
+    ):
+        """
+        Execute an Ollama operation with CUDA error resilience.
+
+        Args:
+            operation_func: Function to execute
+            operation_name: Name of the operation for logging
+            *args, **kwargs: Arguments to pass to the operation function
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            CircuitBreakerOpen: If circuit breaker is open
+            CUDAError: If CUDA errors persist after retries
+            LLMServiceError: For other types of failures
+        """
+        # Check circuit breaker
+        if not self.circuit_breaker.is_available():
+            error_msg = (
+                f"Circuit breaker is open for {operation_name} - GPU may be unstable"
+            )
+            logger.error(error_msg)
+            raise CircuitBreakerOpen(error_msg)
+
+        last_error = None
+        retry_count = 0
+        max_retries = self.max_retries or 3
+
+        while retry_count <= max_retries:
+            try:
+                # Execute the operation
+                result = operation_func(*args, **kwargs)
+
+                # Record success and reset circuit breaker
+                self.circuit_breaker.record_success()
+                logger.debug(f"Successfully executed {operation_name}")
+                return result
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+
+                # Check if this is a CUDA error
+                if self._is_cuda_error(error_str):
+                    retry_count += 1
+                    self.circuit_breaker.record_failure()
+
+                    logger.warning(
+                        f"CUDA error in {operation_name} (attempt {retry_count}/{max_retries + 1}): {error_str}"
+                    )
+
+                    if retry_count <= max_retries:
+                        # Exponential backoff with jitter
+                        delay = (self.retry_delay or 1) * (2 ** (retry_count - 1))
+                        jitter = random.uniform(0.1, 0.3) * delay
+                        total_delay = delay + jitter
+
+                        logger.info(
+                            f"Retrying {operation_name} in {total_delay:.2f} seconds..."
+                        )
+                        time.sleep(total_delay)
+                        continue
+                    else:
+                        # Max retries exceeded for CUDA error
+                        logger.error(
+                            f"Max retries exceeded for {operation_name} due to CUDA errors"
+                        )
+                        raise CUDAError(
+                            f"CUDA error persists in {operation_name}: {error_str}"
+                        )
+                else:
+                    # Non-CUDA error, don't retry
+                    logger.error(f"Non-CUDA error in {operation_name}: {error_str}")
+                    raise LLMServiceError(
+                        f"Failed to execute {operation_name}: {error_str}"
+                    )
+
+        # Should not reach here, but just in case
+        raise LLMServiceError(f"Unexpected error in {operation_name}: {last_error}")
 
     def get_config(self) -> Dict[str, Any]:
         """
@@ -121,12 +267,20 @@ class LLMService:
                 self.config = stored_config
                 self.model_name = self.config.model_name
                 self.embedding_model = self.config.embedding_model
+                self.search_model = self.config.search_model
+                self.chat_model = self.config.chat_model
+                self.analysis_model = self.config.analysis_model
                 self.max_retries = self.config.max_retries
                 self.retry_delay = self.config.retry_delay
                 self.temperature = self.config.temperature
                 self.max_tokens = self.config.max_tokens
                 self.system_prompt = self.config.system_prompt
                 self.min_similarity = self.config.min_similarity
+
+                # Clear cached models to force re-validation with new config
+                if hasattr(self, "_cached_models"):
+                    delattr(self, "_cached_models")
+
                 logger.info("LLM configuration reloaded from storage")
                 return True
         return False
@@ -192,38 +346,83 @@ class LLMService:
         Raises:
             LLMServiceError: If generating the embedding fails
         """
-        try:
-            # Call Ollama's embeddings endpoint
-            response = ollama.embeddings(model=self.embedding_model, prompt=text)
 
+        def _embedding_operation():
+            response = ollama.embeddings(model=self.embedding_model, prompt=text)
             if "embedding" in response:
                 return response["embedding"]
             else:
                 raise LLMServiceError("Invalid response from Ollama embeddings API")
 
+        try:
+            return self._execute_with_resilience(
+                _embedding_operation, "embedding generation"
+            )
+        except (CUDAError, CircuitBreakerOpen) as e:
+            logger.error(f"Embedding generation failed due to GPU issues: {e}")
+            raise EmbeddingGenerationError(f"GPU-related embedding failure: {e}")
         except Exception as e:
             logger.error(f"Embedding generation failed: {e}")
-            raise LLMServiceError(f"Failed to generate embedding: {e}")
+            raise EmbeddingGenerationError(f"Failed to generate embedding: {e}")
 
     def _get_model_for_operation(self, operation_type: str) -> str:
         """
-        Get the appropriate model for a specific operation type.
+        Get the appropriate model for a specific operation type with fallback strategy.
 
         Args:
             operation_type: Type of operation ('search', 'chat', 'analysis')
 
         Returns:
             Model name to use for the operation
+
+        Raises:
+            ValueError: If operation_type is not recognized
         """
-        if operation_type == "search" and self.config.search_model:
-            return self.config.search_model
-        elif operation_type == "chat" and self.config.chat_model:
-            return self.config.chat_model
-        elif operation_type == "analysis" and self.config.analysis_model:
-            return self.config.analysis_model
-        else:
-            # Fall back to default model
-            return self.config.model_name
+        # Define operation-specific model preferences with fallback chain
+        model_preferences = {
+            "search": [self.search_model, self.model_name],
+            "chat": [self.chat_model, self.model_name],
+            "analysis": [self.analysis_model, self.model_name],
+            "embedding": [self.embedding_model],  # Embeddings use dedicated model
+        }
+
+        if operation_type not in model_preferences:
+            raise ValueError(f"Unknown operation type: {operation_type}")
+
+        # Try each model in preference order, skip None values
+        for model in model_preferences[operation_type]:
+            if model:
+                if self._validate_model_availability(model):
+                    return model
+                else:
+                    logger.warning(
+                        f"Model {model} not available for {operation_type}, trying fallback"
+                    )
+
+        # If no valid model found, raise exception
+        raise ValueError(
+            f"No valid model available for operation type: {operation_type}"
+        )
+
+    def _validate_model_availability(self, model_name: str) -> bool:
+        """
+        Validate that a model is available in Ollama.
+
+        Args:
+            model_name: Name of the model to validate
+
+        Returns:
+            True if model is available, False otherwise
+        """
+        try:
+            # Cache available models to avoid repeated API calls
+            if not hasattr(self, "_cached_models"):
+                self._cached_models = self.get_available_models()
+
+            return model_name in self._cached_models
+        except Exception as e:
+            logger.error(f"Failed to validate model availability for {model_name}: {e}")
+            return False  # Assume unavailable on error
 
     def process_entries_without_embeddings(
         self,
@@ -313,42 +512,50 @@ class LLMService:
             if progress_callback:
                 progress_callback(0.1)
 
-            response = ollama.chat(
-                model=self.model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": self.system_prompt
-                        or "You are a helpful journaling assistant.",
-                    },
-                    {
-                        "role": "user",
-                        "content": f"{prompt_template}\n\n{content}",
-                    },
-                ],
-                options={
-                    "temperature": self.temperature,
-                    "num_predict": self.max_tokens,
-                },
-                format={
-                    "type": "object",
-                    "properties": {
-                        "summary": {
-                            "type": "string",
-                            "description": "A concise summary of the journal entry",
+            def _summarization_operation():
+                # Get the appropriate model for analysis operations
+                model_to_use = self._get_model_for_operation("analysis")
+
+                return ollama.chat(
+                    model=model_to_use,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": self.system_prompt
+                            or "You are a helpful journaling assistant.",
                         },
-                        "key_topics": {
-                            "type": "array",
-                            "description": "List of key topics from the entry",
-                            "items": {"type": "string"},
+                        {
+                            "role": "user",
+                            "content": f"{prompt_template}\n\n{content}",
                         },
-                        "mood": {
-                            "type": "string",
-                            "description": "The overall mood of the entry",
-                        },
+                    ],
+                    options={
+                        "temperature": self.temperature,
+                        "num_predict": self.max_tokens,
                     },
-                    "required": ["summary", "key_topics", "mood"],
-                },
+                    format={
+                        "type": "object",
+                        "properties": {
+                            "summary": {
+                                "type": "string",
+                                "description": "A concise summary of the journal entry",
+                            },
+                            "key_topics": {
+                                "type": "array",
+                                "description": "List of key topics from the entry",
+                                "items": {"type": "string"},
+                            },
+                            "mood": {
+                                "type": "string",
+                                "description": "The overall mood of the entry",
+                            },
+                        },
+                        "required": ["summary", "key_topics", "mood"],
+                    },
+                )
+
+            response = self._execute_with_resilience(
+                _summarization_operation, "entry summarization"
             )
 
             # Report completion
@@ -363,6 +570,9 @@ class LLMService:
             summary.prompt_type = prompt_type
 
             return summary
+        except (CUDAError, CircuitBreakerOpen) as e:
+            logger.error(f"Entry summarization failed due to GPU issues: {e}")
+            raise SummarizationError(f"GPU-related summarization failure: {e}")
         except Exception as e:
             logger.error(f"Error summarizing entry: {e}")
             raise SummarizationError(f"Failed to summarize entry: {e}")
@@ -462,8 +672,11 @@ class LLMService:
                 progress_callback(0.4)
 
             # Make the LLM call
+            # Get the appropriate model for analysis operations
+            model_to_use = self._get_model_for_operation("analysis")
+
             response = ollama.chat(
-                model=self.model_name,
+                model=model_to_use,
                 messages=[
                     {
                         "role": "system",
@@ -616,7 +829,7 @@ class LLMService:
                 )
 
                 response = ollama.chat(
-                    model=self.model_name,
+                    model=self._get_model_for_operation("analysis"),
                     messages=[
                         {
                             "role": "system",
@@ -663,7 +876,7 @@ class LLMService:
         # Make the final LLM call
         try:
             response = ollama.chat(
-                model=self.model_name,
+                model=self._get_model_for_operation("analysis"),
                 messages=[
                     {
                         "role": "system",
@@ -1043,7 +1256,7 @@ class LLMService:
 
             # Call Ollama to get expanded terms
             response = ollama.chat(
-                model=self.model_name,
+                model=self._get_model_for_operation("search"),
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": user_message},
@@ -1093,21 +1306,26 @@ class LLMService:
             temp = temperature if temperature is not None else self.temperature
             tokens = max_tokens if max_tokens is not None else self.max_tokens
 
-            # Call Ollama for chat completion - use specified model or default
-            model_to_use = model or self.model_name
+            # Call Ollama for chat completion - use specified model or get appropriate chat model
+            model_to_use = model or self._get_model_for_operation("chat")
 
             if stream:
                 return self._stream_chat_completion(
                     messages, temp, tokens, model_to_use
                 )
             else:
-                response = ollama.chat(
-                    model=model_to_use,
-                    messages=messages,
-                    options={"temperature": temp, "num_predict": tokens},
-                )
 
-                return response
+                def _chat_operation():
+                    return ollama.chat(
+                        model=model_to_use,
+                        messages=messages,
+                        options={"temperature": temp, "num_predict": tokens},
+                    )
+
+                return self._execute_with_resilience(_chat_operation, "chat completion")
+        except (CUDAError, CircuitBreakerOpen) as e:
+            logger.error(f"Chat completion failed due to GPU issues: {e}")
+            raise LLMServiceError(f"GPU-related chat failure: {e}")
         except Exception as e:
             logger.error(f"Chat completion failed: {e}")
             raise LLMServiceError(f"Failed to generate chat completion: {e}")
@@ -1137,8 +1355,8 @@ class LLMService:
         import json
 
         try:
-            # Prepare the request payload - use specified model or default
-            model_to_use = model or self.model_name
+            # Prepare the request payload - use specified model or get appropriate chat model
+            model_to_use = model or self._get_model_for_operation("chat")
 
             data = {
                 "model": model_to_use,
@@ -1196,8 +1414,35 @@ class LLMService:
             # Try to get the list of models from Ollama
             response = ollama.list()
 
+            # Log successful connection for debugging
+            logger.debug(f"ollama.list() returned: {type(response)}")
+
             # Extract just the model names from the response
-            models = [model["name"] for model in response["models"]]
+            # Handle both old dict format and new typed object format
+            models = []
+
+            # Check if response has models attribute (new format)
+            if hasattr(response, "models"):
+                model_list = response.models
+            elif isinstance(response, dict) and "models" in response:
+                # Fallback for dict format
+                model_list = response["models"]
+            else:
+                logger.error(
+                    f"Unexpected response format from ollama.list(): {type(response)}, {response}"
+                )
+                raise ValueError(f"Unexpected response format: {type(response)}")
+
+            for model in model_list:
+                if hasattr(model, "model"):
+                    # New typed object format
+                    models.append(model.model)
+                elif isinstance(model, dict) and "name" in model:
+                    # Old dict format (for backward compatibility)
+                    models.append(model["name"])
+                elif isinstance(model, dict) and "model" in model:
+                    # Alternative dict format
+                    models.append(model["model"])
 
             # Sort the model names for consistent presentation
             models.sort()
@@ -1206,6 +1451,78 @@ class LLMService:
         except Exception as e:
             logger.error(f"Failed to retrieve available models: {e}")
             raise OllamaConnectionError(f"Failed to get available models: {e}")
+
+    def generate_session_title(self, messages: List[Dict[str, str]]) -> str:
+        """
+        Generate a title for a chat session based on the conversation content.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+
+        Returns:
+            Generated title string (2-6 words)
+
+        Raises:
+            LLMServiceError: If title generation fails
+        """
+        try:
+            # Only use the first few messages to avoid token limit issues
+            relevant_messages = messages[:6]
+
+            # Create a condensed conversation summary for title generation
+            conversation_text = ""
+            for msg in relevant_messages:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role in ["user", "assistant"] and content:
+                    conversation_text += f"{role}: {content[:200]}...\n"
+
+            # Prepare the title generation prompt
+            system_message = "You are a chat session title generator. Generate concise, descriptive titles."
+            user_message = (
+                "Based on this conversation, generate a short title (2-6 words) that captures "
+                "the main topic or purpose. Return ONLY the title, no explanations.\n\n"
+                f"Conversation:\n{conversation_text}"
+            )
+
+            response = ollama.chat(
+                model=self._get_model_for_operation("chat"),
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_message},
+                ],
+                options={
+                    "temperature": 0.3,  # Low temperature for consistent titles
+                    "num_predict": 20,  # Short response for just the title
+                },
+            )
+
+            title = response["message"]["content"].strip()
+
+            # Clean up the title - remove quotes and extra formatting
+            title = title.strip("\"'")
+
+            # Fallback if title is too long or empty
+            if not title or len(title.split()) > 8:
+                # Extract topic from first user message as fallback
+                first_user_msg = next(
+                    (
+                        msg["content"]
+                        for msg in relevant_messages
+                        if msg.get("role") == "user"
+                    ),
+                    "Chat Session",
+                )
+                words = first_user_msg.split()[:4]
+                title = " ".join(words) if words else "Chat Session"
+
+            logger.info(f"Generated session title: '{title}'")
+            return title
+
+        except Exception as e:
+            logger.error(f"Failed to generate session title: {e}")
+            # Return a fallback title instead of raising an exception
+            return "Chat Session"
 
     def generate_response_with_model(self, messages, model_name=None):
         """
@@ -1222,8 +1539,8 @@ class LLMService:
             OllamaConnectionError: If connection to Ollama fails
         """
         try:
-            # Use the provided model_name or fall back to the default
-            model = model_name or self.model_name
+            # Use the provided model_name or fall back to chat model
+            model = model_name or self._get_model_for_operation("chat")
 
             response = ollama.chat(
                 model=model,
@@ -1238,3 +1555,254 @@ class LLMService:
         except Exception as e:
             logger.error(f"Failed to generate response with model {model_name}: {e}")
             raise OllamaConnectionError(f"Failed to generate response: {e}")
+
+    def analyze_message_for_tools(
+        self, message: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze a message to determine what tools should be called.
+
+        This method uses the LLM to intelligently decide which tools are relevant
+        for the given message and context.
+
+        Args:
+            message: User message to analyze
+            context: Optional context (conversation history, session info, etc.)
+
+        Returns:
+            Dictionary with tool recommendations and confidence scores
+        """
+        try:
+            # Create a prompt for tool selection
+            system_prompt = """You are an intelligent tool selector for a journaling application. Your job is to analyze user messages and determine which tools should be called to provide the best response.
+
+Available tools:
+- journal_search: Search through journal entries for relevant information. Use when user asks about past entries, memories, or specific events they recorded.
+- web_search: Search the web for current information, facts, and external knowledge. Use when user asks about general knowledge, current events, definitions, or anything that requires external information beyond their personal journal.
+
+Analyze the user's message and determine:
+1. Whether any tools should be called (true/false)
+2. Which tools are relevant and why
+3. Confidence score (0.0 to 1.0) for each tool recommendation
+
+Important guidelines:
+- Use journal_search for personal/journal-related queries
+- Use web_search for factual questions, current events, definitions, or external information
+- Some queries may require both tools
+- If unsure whether information is in the journal or requires web search, recommend both with appropriate confidence scores
+
+Respond with JSON only."""
+
+            # Include conversation context if available
+            context_str = ""
+            if context:
+                if context.get("recent_messages"):
+                    context_str += (
+                        f"Recent conversation: {context['recent_messages'][-3:]} "
+                    )
+                if context.get("session_summary"):
+                    context_str += f"Session context: {context['session_summary']} "
+
+            user_prompt = f"""User message: "{message}"
+{context_str}
+
+Analyze this message and respond with JSON in this format:
+{{
+    "should_use_tools": boolean,
+    "recommended_tools": [
+        {{
+            "tool_name": "tool_name",
+            "confidence": 0.0-1.0,
+            "reason": "why this tool is relevant",
+            "suggested_query": "query to use with the tool"
+        }}
+    ],
+    "analysis": "brief explanation of your decision"
+}}"""
+
+            response = ollama.chat(
+                model=self._get_model_for_operation("chat"),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                options={
+                    "temperature": 0.1,  # Low temperature for consistent analysis
+                    "num_predict": 500,
+                },
+                format={
+                    "type": "object",
+                    "properties": {
+                        "should_use_tools": {"type": "boolean"},
+                        "recommended_tools": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "tool_name": {"type": "string"},
+                                    "confidence": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                    },
+                                    "reason": {"type": "string"},
+                                    "suggested_query": {"type": "string"},
+                                },
+                                "required": [
+                                    "tool_name",
+                                    "confidence",
+                                    "reason",
+                                    "suggested_query",
+                                ],
+                            },
+                        },
+                        "analysis": {"type": "string"},
+                    },
+                    "required": ["should_use_tools", "recommended_tools", "analysis"],
+                },
+            )
+
+            return json.loads(response["message"]["content"])
+
+        except Exception as e:
+            logger.error(f"Failed to analyze message for tools: {e}")
+            # Return a fallback response
+            return {
+                "should_use_tools": False,
+                "recommended_tools": [],
+                "analysis": f"Error analyzing message: {e}",
+            }
+
+    def synthesize_response_with_tools(
+        self,
+        user_message: str,
+        tool_results: List[Dict[str, Any]],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Generate a response that incorporates tool results.
+
+        Args:
+            user_message: Original user message
+            tool_results: Results from tool executions
+            context: Optional context information
+
+        Returns:
+            Generated response incorporating tool results
+        """
+        try:
+            # Prepare context from tool results
+            tool_context = ""
+            for result in tool_results:
+                if result.get("success") and result.get("data"):
+                    tool_name = result.get("tool_name", "unknown")
+                    data = result["data"]
+
+                    if tool_name == "journal_search" and data.get("results"):
+                        tool_context += "\n\nRelevant journal entries found:\n"
+                        for entry in data["results"]:
+                            tool_context += f"- {entry['date']}: {entry['title']}\n"
+                            tool_context += f"  {entry['content_preview']}\n"
+                            if entry.get("tags"):
+                                tool_context += f"  Tags: {', '.join(entry['tags'])}\n"
+                    elif tool_name == "web_search" and data.get("results"):
+                        tool_context += f"\n\nWeb search results for '{data.get('query', 'your query')}':\n"
+                        tool_context += "=" * 50 + "\n"
+                        for idx, result in enumerate(data["results"], 1):
+                            tool_context += f"\nResult {idx}:\n"
+                            tool_context += f"Title: {result['title']}\n"
+                            tool_context += f"Source: {result['source']}\n"
+                            tool_context += f"Content: {result['snippet']}\n"
+                            if result.get("url"):
+                                tool_context += f"URL: {result['url']}\n"
+                            tool_context += "-" * 30 + "\n"
+                        tool_context += "=" * 50
+                    else:
+                        tool_context += f"\n\nTool {tool_name} results: {data}\n"
+
+            # Get current date for context
+            from datetime import datetime
+
+            current_date = datetime.now().strftime("%B %d, %Y")
+
+            # Create system prompt that emphasizes using the tool results
+            # Don't duplicate instructions if persona already has tool awareness
+            base_instructions = f"""Today's date is {current_date}. Use this as the reference point for "current" or "today" when responding.
+
+When tool results are provided, you MUST use them as the primary source for your response:
+
+For journal search results:
+- Reference specific entries by date and title
+- Quote relevant content from the user's journal
+- Mention the dates of entries when referencing them
+
+For web search results:
+- YOU MUST base your answer ENTIRELY on the provided search results
+- Cite specific sources by mentioning the result number and source name
+- Quote or paraphrase information from the search results
+- DO NOT add information that isn't in the search results
+- If the search results don't fully answer the question, acknowledge what information is missing
+
+CRITICAL: When web search results are provided, your response MUST be based on those results. Do not use general knowledge or make up information. Always cite which search result you're referencing."""
+
+            # Use existing system prompt (which may be persona-specific) with tool context
+            existing_prompt = (
+                self.system_prompt or "You are a helpful journaling assistant."
+            )
+
+            # Only add tool context if not already present
+            if "search tools" in existing_prompt:
+                system_prompt = f"{existing_prompt}\n\n{base_instructions}"
+            else:
+                system_prompt = f"{existing_prompt} You have access to search tools to help provide better responses.\n\n{base_instructions}"
+
+            # Prepare the conversation context
+            messages = [{"role": "system", "content": system_prompt}]
+
+            # Add conversation history if available
+            if context and context.get("conversation_history"):
+                for msg in context["conversation_history"][
+                    -5:
+                ]:  # Last 5 messages for context
+                    messages.append(
+                        {
+                            "role": msg.get("role", "user"),
+                            "content": msg.get("content", ""),
+                        }
+                    )
+
+            # Add the current user message
+            messages.append({"role": "user", "content": user_message})
+
+            # Add tool context as a separate system message to make it clearer to the LLM
+            if tool_context:
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": f"Here are the search results to answer the user's question:{tool_context}\n\nPlease use these search results to provide an accurate, detailed response to the user's question.",
+                    }
+                )
+
+            response = ollama.chat(
+                model=self._get_model_for_operation("chat"),
+                messages=messages,
+                options={
+                    "temperature": self.temperature,
+                    "num_predict": self.max_tokens,
+                },
+            )
+
+            return response["message"]["content"]
+
+        except Exception as e:
+            logger.error(f"Failed to synthesize response with tools: {e}")
+            # Fallback to basic response
+            return self.generate_response_with_model(
+                [
+                    {
+                        "role": "system",
+                        "content": self.system_prompt or "You are a helpful assistant.",
+                    },
+                    {"role": "user", "content": user_message},
+                ]
+            )

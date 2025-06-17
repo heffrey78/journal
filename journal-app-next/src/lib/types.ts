@@ -118,6 +118,9 @@ export interface LLMConfig {
   id?: string;
   model_name: string;
   embedding_model: string;
+  search_model?: string;
+  chat_model?: string;
+  analysis_model?: string;
   temperature: number;
   max_tokens: number;
   max_retries: number;

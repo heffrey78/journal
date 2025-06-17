@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import LLMSettings from '@/components/settings/LLMSettings';
 import ThemeSettings from '@/components/theme/ThemeSettings';
+import WebSearchSettings from '@/components/settings/WebSearchSettings';
+import PersonaManager from '@/components/settings/PersonaManager';
 import { AppSettings } from '@/lib/types';
 import Container from '@/components/layout/Container';
 import ContentPadding from '@/components/layout/ContentPadding';
@@ -20,7 +22,7 @@ const defaultSettings: AppSettings = {
   autoSaveInterval: 30,
 };
 
-type SettingTab = 'appearance' | 'editor' | 'llm';
+type SettingTab = 'appearance' | 'editor' | 'llm' | 'personas' | 'tools';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -151,6 +153,26 @@ export default function SettingsPage() {
               >
                 LLM Configuration
               </button>
+              <button
+                className={`mr-4 inline-block py-3 px-4 border-b-2 font-medium text-sm ${
+                  currentTab === 'personas'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                onClick={() => setCurrentTab('personas')}
+              >
+                Personas
+              </button>
+              <button
+                className={`mr-4 inline-block py-3 px-4 border-b-2 font-medium text-sm ${
+                  currentTab === 'tools'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                onClick={() => setCurrentTab('tools')}
+              >
+                Tools
+              </button>
             </div>
           </div>
 
@@ -236,8 +258,24 @@ export default function SettingsPage() {
             </Card>
           )}
 
+          {/* Personas settings */}
+          {currentTab === 'personas' && (
+            <Card className="mb-6">
+              <div className="p-6">
+                <PersonaManager onSaveComplete={handleSettingsSave} />
+              </div>
+            </Card>
+          )}
+
+          {/* Tools settings */}
+          {currentTab === 'tools' && (
+            <div className="space-y-6">
+              <WebSearchSettings />
+            </div>
+          )}
+
           {/* Show global save notification when not on a specific tab */}
-          {saveMessage && !['appearance', 'editor', 'llm'].includes(currentTab) && (
+          {saveMessage && !['appearance', 'editor', 'llm', 'personas', 'tools'].includes(currentTab) && (
             <div className={`fixed bottom-4 right-4 px-4 py-2 rounded-md ${
               saveMessage.type === 'success'
                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'

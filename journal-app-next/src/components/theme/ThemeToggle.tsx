@@ -17,7 +17,8 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
   try {
     themeContext = useTheme();
   } catch (e) {
-    console.warn("Theme context not available yet, using fallback");
+    // Silently handle the case where theme context isn't ready yet
+    // This is expected during initial render
   }
 
   // Wait for component to mount to avoid hydration mismatch
@@ -60,7 +61,7 @@ export default function ThemeToggle({ className = '' }: ThemeToggleProps) {
       // We don't need to manually update isDarkMode here
       // The effect above will handle it based on the theme change
     } else {
-      console.warn("Theme toggle not available");
+      // Theme toggle not available yet, silently ignore
     }
   };
 

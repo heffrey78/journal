@@ -28,24 +28,42 @@ export { default as Footer } from './Footer';
 export { default as FolderSidebar } from './FolderSidebar';
 export { default as Logo } from './Logo';
 
+// Import components for the default export object
+import ContainerComponent from './Container';
+import ContentPaddingComponent from './ContentPadding';
+import StackComponent from './Stack';
+import ClusterComponent from './Cluster';
+import GridComponent from './Grid';
+import SplitLayoutComponent from './SplitLayout';
+import PageLayoutComponent from './PageLayout';
+import CardGridComponent from './CardGrid';
+import CardListComponent from './CardList';
+import PageSectionComponent from './PageSection';
+import ResponsiveLayoutComponent from './ResponsiveLayout';
+import MainLayoutComponent from './MainLayout';
+import HeaderComponent from './Header';
+import FooterComponent from './Footer';
+import FolderSidebarComponent from './FolderSidebar';
+import LogoComponent from './Logo';
+
 // Re-export all layout components as a default object for specific imports
 const Layout = {
-  Container,
-  ContentPadding,
-  Stack,
-  Cluster,
-  Grid,
-  SplitLayout,
-  PageLayout,
-  CardGrid,
-  CardList,
-  PageSection,
-  ResponsiveLayout,
-  MainLayout,
-  Header,
-  Footer,
-  FolderSidebar,
-  Logo,
+  Container: ContainerComponent,
+  ContentPadding: ContentPaddingComponent,
+  Stack: StackComponent,
+  Cluster: ClusterComponent,
+  Grid: GridComponent,
+  SplitLayout: SplitLayoutComponent,
+  PageLayout: PageLayoutComponent,
+  CardGrid: CardGridComponent,
+  CardList: CardListComponent,
+  PageSection: PageSectionComponent,
+  ResponsiveLayout: ResponsiveLayoutComponent,
+  MainLayout: MainLayoutComponent,
+  Header: HeaderComponent,
+  Footer: FooterComponent,
+  FolderSidebar: FolderSidebarComponent,
+  Logo: LogoComponent,
 };
 
 export default Layout;

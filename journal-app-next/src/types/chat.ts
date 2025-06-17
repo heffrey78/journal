@@ -2,6 +2,31 @@
  * Types for chat functionality
  */
 
+export interface Persona {
+  id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  icon: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface PersonaCreate {
+  name: string;
+  description: string;
+  system_prompt: string;
+  icon?: string;
+}
+
+export interface PersonaUpdate {
+  name?: string;
+  description?: string;
+  system_prompt?: string;
+  icon?: string;
+}
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -11,6 +36,7 @@ export interface ChatSession {
   context_summary?: string;
   temporal_filter?: string;
   entry_count: number;
+  persona_id?: string;
 }
 
 export interface ChatMessage {
@@ -43,15 +69,21 @@ export interface ChatSessionStats {
 export interface CreateSessionRequest {
   title?: string;
   temporal_filter?: string;
+  persona_id?: string;
 }
 
 export interface UpdateSessionRequest {
   title?: string;
   context_summary?: string;
   temporal_filter?: string;
+  persona_id?: string;
 }
 
 export interface ChatListResponse {
   sessions: ChatSession[];
   total: number;
+  limit: number;
+  offset: number;
+  has_next: boolean;
+  has_previous: boolean;
 }

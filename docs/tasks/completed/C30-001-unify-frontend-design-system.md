@@ -19,15 +19,15 @@ The frontend currently suffers from significant design inconsistencies that crea
 - No unified design system or component library
 
 ## Acceptance Criteria
-- [ ] Create a unified component library with consistent APIs
-- [ ] Standardize button placement and behavior across all pages
-- [ ] Implement consistent pagination pattern (location, style, behavior)
-- [ ] Make common actions (import, export, new entry) globally accessible
-- [ ] Establish and document spacing/layout guidelines
-- [ ] Consolidate to a single icon library
-- [ ] Ensure all components support theme/dark mode properly
-- [ ] Create responsive design patterns that work across all devices
-- [ ] Document design patterns and component usage guidelines
+- [x] Create a unified component library with consistent APIs
+- [x] Standardize button placement and behavior across all pages
+- [x] Implement consistent pagination pattern (location, style, behavior)
+- [x] Make common actions (import, export, new entry) globally accessible
+- [x] Establish and document spacing/layout guidelines
+- [x] Consolidate to a single icon library
+- [x] Ensure all components support theme/dark mode properly
+- [x] Create responsive design patterns that work across all devices
+- [x] Document design patterns and component usage guidelines
 
 ## Technical Details
 

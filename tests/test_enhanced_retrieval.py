@@ -69,6 +69,42 @@ class MockLLMService:
         """Mock chat completion response"""
         return {"message": {"content": "This is a mock response"}}
 
+    def analyze_message_for_tools(self, message: str, context=None) -> Dict[str, Any]:
+        """Mock tool analysis that suggests using journal search for relevant queries"""
+        # For enhanced retrieval test, suggest journal search when relevant
+        if (
+            "journal" in message.lower()
+            or "working on" in message.lower()
+            or "features" in message.lower()
+        ):
+            return {
+                "should_use_tools": True,
+                "recommended_tools": [
+                    {
+                        "tool_name": "journal_search",
+                        "confidence": 0.9,
+                        "reason": "User is asking about their journal entries",
+                        "suggested_query": message,
+                    }
+                ],
+                "analysis": "Journal search recommended for this query",
+            }
+        return {
+            "should_use_tools": False,
+            "recommended_tools": [],
+            "analysis": "No tools needed for test",
+        }
+
+    def generate_response_with_model(self, messages, model_name=None):
+        """Mock response generation"""
+        return "This is a mock response from the enhanced retrieval test."
+
+    def synthesize_response_with_tools(
+        self, user_message: str, tool_results, context=None
+    ):
+        """Mock response synthesis with tool results"""
+        return "This is a response incorporating journal search results from the enhanced retrieval test."
+
 
 class MockChatStorage:
     """Mock chat storage for testing entry retrieval."""
@@ -77,6 +113,7 @@ class MockChatStorage:
         self.messages = []
         self.references = []
         self.chat_config = ChatConfig()
+        self.base_dir = "./test_journal_data"
 
     def add_message(self, message: ChatMessage) -> ChatMessage:
         """Mock adding a message"""
@@ -101,6 +138,20 @@ class MockChatStorage:
     def get_messages(self, session_id: str) -> List[ChatMessage]:
         """Mock getting messages"""
         return [msg for msg in self.messages if msg.session_id == session_id]
+
+    def save_message_entry_references(
+        self, message_id: str, references: List[EntryReference]
+    ) -> bool:
+        """Mock saving message entry references"""
+        self.references.append((message_id, references))
+        return True
+
+    def get_conversation_history(
+        self, session_id: str, limit: int = 10
+    ) -> List[Dict[str, str]]:
+        """Mock getting conversation history"""
+        messages = self.get_messages(session_id)
+        return [{"role": msg.role, "content": msg.content} for msg in messages[-limit:]]
 
 
 class TestEntryChunking:

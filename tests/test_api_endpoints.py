@@ -50,16 +50,20 @@ if DEPENDENCIES_AVAILABLE:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # Create necessary tables
+        # Create necessary tables - use the actual schema format
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS entries (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
-                content TEXT NOT NULL,
+                file_path TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT,
-                tags TEXT
+                tags TEXT,
+                folder TEXT,
+                favorite INTEGER DEFAULT 0,
+                images TEXT,
+                source_metadata TEXT
             )
         """
         )
@@ -83,15 +87,190 @@ if DEPENDENCIES_AVAILABLE:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS vectors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 entry_id TEXT NOT NULL,
                 chunk_id INTEGER NOT NULL,
                 text TEXT NOT NULL,
                 embedding BLOB,
-                created_at TEXT NOT NULL,
                 FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
             )
         """
+        )
+
+        # Create config table with new schema including specialized model fields
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS config (
+                id TEXT PRIMARY KEY,
+                model_name TEXT NOT NULL,
+                embedding_model TEXT NOT NULL,
+                search_model TEXT,
+                chat_model TEXT,
+                analysis_model TEXT,
+                max_retries INTEGER NOT NULL,
+                retry_delay REAL NOT NULL,
+                temperature REAL NOT NULL,
+                max_tokens INTEGER NOT NULL,
+                system_prompt TEXT,
+                min_similarity REAL DEFAULT 0.5
+            )
+        """
+        )
+
+        # Create prompt types table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_types (
+                id TEXT NOT NULL,
+                config_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                PRIMARY KEY (id, config_id),
+                FOREIGN KEY (config_id) REFERENCES config(id)
+            )
+        """
+        )
+
+        # Create web search config table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS web_search_config (
+                id TEXT PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT 1,
+                max_searches_per_minute INTEGER NOT NULL DEFAULT 10,
+                max_results_per_search INTEGER NOT NULL DEFAULT 5,
+                default_region TEXT NOT NULL DEFAULT 'wt-wt',
+                cache_duration_hours INTEGER NOT NULL DEFAULT 1,
+                enable_news_search BOOLEAN NOT NULL DEFAULT 1,
+                max_snippet_length INTEGER NOT NULL DEFAULT 200
+            )
+        """
+        )
+
+        # Insert default LLM configuration
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO config VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "default",
+                "qwen3:latest",
+                "nomic-embed-text:latest",
+                None,  # search_model
+                None,  # chat_model
+                None,  # analysis_model
+                2,  # max_retries
+                1.0,  # retry_delay
+                0.7,  # temperature
+                1000,  # max_tokens
+                "You are a helpful journaling assistant.",  # system_prompt
+                0.5,  # min_similarity
+            ),
+        )
+
+        # Insert default web search configuration
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO web_search_config VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "default",
+                1,  # enabled
+                10,  # max_searches_per_minute
+                5,  # max_results_per_search
+                "wt-wt",  # default_region
+                1,  # cache_duration_hours
+                1,  # enable_news_search
+                200,  # max_snippet_length
+            ),
+        )
+
+        # Create chat tables
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_accessed TEXT NOT NULL,
+                context_summary TEXT,
+                temporal_filter TEXT,
+                entry_count INTEGER DEFAULT 0,
+                model_name TEXT,
+                persona_id TEXT
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                metadata TEXT,
+                token_count INTEGER,
+                FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_message_entries (
+                message_id TEXT NOT NULL,
+                entry_id TEXT NOT NULL,
+                similarity_score REAL NOT NULL,
+                chunk_index INTEGER,
+                entry_title TEXT,
+                entry_snippet TEXT,
+                PRIMARY KEY (message_id, entry_id),
+                FOREIGN KEY (message_id) REFERENCES chat_messages (id) ON DELETE CASCADE,
+                FOREIGN KEY (entry_id) REFERENCES entries (id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # Create chat config table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_config (
+                id TEXT PRIMARY KEY,
+                system_prompt TEXT NOT NULL,
+                temperature REAL NOT NULL,
+                max_history INTEGER NOT NULL,
+                retrieval_limit INTEGER NOT NULL,
+                chunk_size INTEGER NOT NULL,
+                chunk_overlap INTEGER NOT NULL,
+                use_enhanced_retrieval BOOLEAN NOT NULL,
+                max_tokens INTEGER NOT NULL,
+                max_context_tokens INTEGER NOT NULL,
+                conversation_summary_threshold INTEGER NOT NULL,
+                context_window_size INTEGER NOT NULL,
+                use_context_windowing BOOLEAN NOT NULL,
+                min_messages_for_summary INTEGER NOT NULL,
+                summary_prompt TEXT NOT NULL
+            )
+            """
+        )
+
+        # Create personas table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS personas (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL,
+                system_prompt TEXT NOT NULL,
+                icon TEXT DEFAULT '🤖',
+                is_default BOOLEAN DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT
+            )
+            """
         )
 
         conn.commit()
@@ -100,14 +279,10 @@ if DEPENDENCIES_AVAILABLE:
         # Create a test storage manager
         class TestStorageManager(StorageManager):
             def __init__(self):
-                self.base_dir = TEST_DATA_DIR
-                self.entries_dir = os.path.join(TEST_DATA_DIR, "entries")
-                self.db_path = os.path.join(TEST_DATA_DIR, "journal.db")
-                self._entry_cache = {}
-                self._tags_cache = []
-                self._cache_loaded = False
-                os.makedirs(self.entries_dir, exist_ok=True)
-                self._init_sqlite()
+                # Call parent constructor to properly initialize storage components
+                super().__init__(TEST_DATA_DIR)
+                # In-memory store for test entries
+                self._test_entries = {}
 
             # Override methods that might cause test failures
             def get_entries(
@@ -152,6 +327,10 @@ if DEPENDENCIES_AVAILABLE:
 
             def get_entry(self, entry_id):
                 """Return a test entry based on ID."""
+                # Check in-memory store first
+                if entry_id in self._test_entries:
+                    return self._test_entries[entry_id]
+
                 # For regular test IDs
                 if entry_id in ["test1", "test2", "test3"]:
                     entries = self.get_entries()
@@ -161,26 +340,29 @@ if DEPENDENCIES_AVAILABLE:
 
                 # For dynamically created entries in tests
                 if entry_id == "test_entry_id":
-                    return JournalEntry(
+                    entry = JournalEntry(
                         id="test_entry_id",
                         title="Test Entry",
                         content="This is a test entry",
                         created_at=datetime.now().isoformat(),
                         tags=["test", "api"],
                     )
+                    self._test_entries[entry_id] = entry
+                    return entry
 
                 # For nonexistent entries, return None
                 if entry_id == "nonexistent":
                     return None
 
-                # Default behavior for other IDs (used in create/update tests)
-                return JournalEntry(
-                    id=entry_id,
-                    title="Test Entry",
-                    content="This is a test entry",
-                    created_at=datetime.now().isoformat(),
-                    tags=["test", "api"],
-                )
+                # For created entries that don't exist, return None (they were probably deleted)
+                # Only auto-create during the setup/create phase, not for gets after delete
+                return None
+
+            def save_entry(self, entry):
+                """Save a journal entry (used by API)."""
+                # Store in memory for later retrieval
+                self._test_entries[entry.id] = entry
+                return entry.id
 
             def create_entry(
                 self, title, content, tags=None, created_at=None, updated_at=None
@@ -199,15 +381,17 @@ if DEPENDENCIES_AVAILABLE:
                     tags=tags or [],
                 )
 
+                # Store in memory for later retrieval
+                self._test_entries[entry_id] = entry
                 return entry
 
-            def update_entry(self, entry_id, **kwargs):
+            def update_entry(self, entry_id, update_data):
                 """Mock entry update."""
                 entry = self.get_entry(entry_id)
                 if not entry:
                     return None
 
-                for key, value in kwargs.items():
+                for key, value in update_data.items():
                     setattr(entry, key, value)
 
                 return entry
@@ -215,11 +399,27 @@ if DEPENDENCIES_AVAILABLE:
             def delete_entry(self, entry_id):
                 """Mock entry deletion."""
                 entry = self.get_entry(entry_id)
-                return entry is not None
+                if entry is not None:
+                    # Remove from in-memory store
+                    self._test_entries.pop(entry_id, None)
+                    return True
+                return False
 
-            def text_search(self, query, limit=10, tags=None):
+            def text_search(
+                self,
+                query,
+                date_from=None,
+                date_to=None,
+                tags=None,
+                folder=None,
+                favorite=None,
+                limit=10,
+                offset=0,
+            ):
                 """Mock text search functionality."""
+                # Get all entries including ones in memory
                 entries = self.get_entries()
+                entries.extend(self._test_entries.values())
 
                 if query:
                     results = []
@@ -240,7 +440,7 @@ if DEPENDENCIES_AVAILABLE:
 
             def get_all_tags(self):
                 """Return a list of test tags."""
-                return [
+                base_tags = [
                     "test",
                     "api",
                     "food",
@@ -251,18 +451,61 @@ if DEPENDENCIES_AVAILABLE:
                     "special",
                 ]
 
-            def get_entries_by_tag(self, tag, limit=10):
+                # Add tags from in-memory entries
+                for entry in self._test_entries.values():
+                    if entry.tags:
+                        base_tags.extend(entry.tags)
+
+                # Return unique tags
+                return list(set(base_tags))
+
+            def get_entries_by_tag(self, tag, limit=10, offset=0):
                 """Return entries with the specified tag."""
+                # Get all entries including ones in memory
                 entries = self.get_entries()
-                return [e for e in entries if tag in e.tags][:limit]
+                entries.extend(self._test_entries.values())
+                matching = [e for e in entries if tag in e.tags]
+                return matching[offset : offset + limit]
 
             def get_stats(self):
                 """Return test statistics."""
+                # Get all entries including ones in memory
+                entries = self.get_entries()
+                entries.extend(self._test_entries.values())
+
+                total_entries = len(entries)
+                all_tags = self.get_all_tags()
+                total_tags = len(all_tags)
+
+                # Count tag usage
+                tag_counts = {}
+                for entry in entries:
+                    if entry.tags:
+                        for tag in entry.tags:
+                            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+                # Sort by count and convert to list format
+                most_used_tags = [
+                    [tag, count]
+                    for tag, count in sorted(
+                        tag_counts.items(), key=lambda x: x[1], reverse=True
+                    )
+                ]
+
+                # Calculate oldest and newest entries
+                oldest_entry = None
+                newest_entry = None
+                if entries:
+                    sorted_entries = sorted(entries, key=lambda e: e.created_at)
+                    oldest_entry = sorted_entries[0].created_at.isoformat()
+                    newest_entry = sorted_entries[-1].created_at.isoformat()
+
                 return {
-                    "total_entries": 6,
-                    "total_tags": 8,
-                    "most_used_tags": [["test", 3], ["api", 2], ["food", 1]],
-                    "recent_entries": 3,
+                    "total_entries": total_entries,
+                    "oldest_entry": oldest_entry,
+                    "newest_entry": newest_entry,
+                    "total_tags": total_tags,
+                    "most_used_tags": most_used_tags[:5],  # Top 5
                 }
 
         # Set up our test dependencies
@@ -316,7 +559,7 @@ class TestAPIEndpoints:
         response = client.get("/api/info")
         assert response.status_code == 200
         data = response.json()
-        assert data["name"] == "Journal API"
+        assert data["name"] == "Llens API"
         assert "version" in data
 
     def test_create_entry(self):
@@ -339,11 +582,21 @@ class TestAPIEndpoints:
 
     def test_get_entry(self):
         """Test retrieving a specific entry."""
-        # Get the entry we created earlier
-        response = client.get(f"/entries/{self.entry_id}")
+        # First create a test entry for this specific test
+        entry_data = {
+            "title": "Test Entry",
+            "content": "This is a test entry",
+            "tags": ["test", "api"],
+        }
+        response = client.post("/entries/", json=entry_data)
+        assert response.status_code == 200
+        test_entry_id = response.json()["id"]
+
+        # Get the entry we just created
+        response = client.get(f"/entries/{test_entry_id}")
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == self.entry_id
+        assert data["id"] == test_entry_id
         assert data["title"] == "Test Entry"
 
         # Try to get a non-existent entry
@@ -366,11 +619,24 @@ class TestAPIEndpoints:
 
     def test_update_entry(self):
         """Test updating an entry."""
+        # First create a test entry for this specific test
+        entry_data = {
+            "title": "Test Entry",
+            "content": "This is a test entry",
+            "tags": ["test", "api"],
+        }
+        response = client.post("/entries/", json=entry_data)
+        assert response.status_code == 200
+        test_entry_id = response.json()["id"]
+
+        # Now update it
         update_data = {
             "title": "Updated Test Entry",
             "tags": ["test", "api", "updated"],
         }
-        response = client.patch(f"/entries/{self.entry_id}", json=update_data)
+        response = client.patch(f"/entries/{test_entry_id}", json=update_data)
+        if response.status_code != 200:
+            print(f"Response: {response.text}")
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == update_data["title"]
@@ -378,7 +644,7 @@ class TestAPIEndpoints:
         assert data["content"] == "This is a test entry"  # Unchanged
 
         # Verify update was persisted
-        response = client.get(f"/entries/{self.entry_id}")
+        response = client.get(f"/entries/{test_entry_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == update_data["title"]
@@ -404,6 +670,9 @@ class TestAPIEndpoints:
 
         # Search for entries containing "apple"
         response = client.get("/entries/search/?query=apple")
+        if response.status_code != 200:
+            print(f"Search Response Status: {response.status_code}")
+            print(f"Search Response Text: {response.text}")
         assert response.status_code == 200
         data = response.json()
         assert len(data) >= 1
@@ -429,6 +698,9 @@ class TestAPIEndpoints:
 
         # Get all tags
         response = client.get("/tags/")
+        if response.status_code != 200:
+            print(f"Tags Response Status: {response.status_code}")
+            print(f"Tags Response Text: {response.text}")
         assert response.status_code == 200
         tags = response.json()
         assert isinstance(tags, list)
@@ -436,6 +708,9 @@ class TestAPIEndpoints:
 
         # Get entries by tag
         response = client.get("/tags/test/entries")
+        if response.status_code != 200:
+            print(f"Tag Entries Response Status: {response.status_code}")
+            print(f"Tag Entries Response Text: {response.text}")
         assert response.status_code == 200
         data = response.json()
         assert len(data) >= 1
@@ -453,6 +728,9 @@ class TestAPIEndpoints:
             client.post("/entries/", json=entry)
 
         response = client.get("/stats/")
+        if response.status_code != 200:
+            print(f"Stats Response Status: {response.status_code}")
+            print(f"Stats Response Text: {response.text}")
         assert response.status_code == 200
         data = response.json()
         assert "total_entries" in data

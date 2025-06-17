@@ -25,16 +25,16 @@ export const GlobalActions: React.FC = () => {
       {/* Desktop Actions */}
       <div className="hidden md:flex items-center gap-2">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => setIsImportModalOpen(true)}
-          className="flex items-center gap-1"
+          className="flex items-center gap-1 cursor-pointer"
         >
           <FileUp className="h-4 w-4" />
           Import
         </Button>
         <Link href="/entries/new">
-          <Button size="sm" className="flex items-center gap-1">
+          <Button size="sm" className="flex items-center gap-1 cursor-pointer">
             <Plus className="h-4 w-4" />
             New Entry
           </Button>
@@ -44,15 +44,16 @@ export const GlobalActions: React.FC = () => {
       {/* Mobile Actions - Simplified for now */}
       <div className="md:hidden flex items-center gap-1">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => setIsImportModalOpen(true)}
+          className="cursor-pointer"
         >
           <FileUp className="h-4 w-4" />
           <span className="sr-only">Import</span>
         </Button>
         <Link href="/entries/new">
-          <Button size="sm">
+          <Button size="sm" className="cursor-pointer">
             <Plus className="h-4 w-4" />
             <span className="sr-only">New Entry</span>
           </Button>

@@ -13,16 +13,16 @@
 The application currently uses generic naming and lacks a distinctive brand identity. The name "Llens" (likely a play on "lens" with double-L) provides a unique, memorable brand that suggests the app's purpose of providing a focused view into one's journal entries. A logo in the top left banner will strengthen brand recognition and improve the visual hierarchy of the application.
 
 ## Acceptance Criteria
-- [ ] Application name changed from "Journal Application" to "Llens" throughout the codebase
-- [ ] Logo designed/selected and properly sized for the header banner
-- [ ] Logo displayed in the top left corner of the application header
-- [ ] Logo is responsive and scales appropriately on different screen sizes
-- [ ] Logo links to the home page when clicked
-- [ ] Page titles updated to reflect "Llens" branding
-- [ ] Any documentation references updated to use "Llens"
-- [ ] Logo works properly in both light and dark themes
-- [ ] Tests updated to reflect naming changes
-- [ ] Application metadata (package.json, etc.) updated with new name
+- [x] Application name changed from "Journal Application" to "Llens" throughout the codebase
+- [x] Logo designed/selected and properly sized for the header banner
+- [x] Logo displayed in the top left corner of the application header
+- [x] Logo is responsive and scales appropriately on different screen sizes
+- [x] Logo links to the home page when clicked
+- [x] Page titles updated to reflect "Llens" branding
+- [x] Any documentation references updated to use "Llens"
+- [x] Logo works properly in both light and dark themes
+- [x] Tests updated to reflect naming changes
+- [x] Application metadata (package.json, etc.) updated with new name
 
 ## Technical Details
 - **Components affected**:

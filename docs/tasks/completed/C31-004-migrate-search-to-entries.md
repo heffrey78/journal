@@ -13,16 +13,16 @@
 Currently, search and entry browsing are separate pages, requiring users to switch contexts when they want to search their journal. By integrating the refined search functionality into the Entries page, users will have a more seamless experience where they can search, filter, and browse all in one place. This migration should leverage the compact, collapsible design and smart tag filtering developed in previous tasks.
 
 ## Acceptance Criteria
-- [ ] Search interface is seamlessly integrated into Entries page header
-- [ ] Search can be toggled open/closed without leaving the page
-- [ ] Entry list updates dynamically based on search filters
-- [ ] URL parameters preserve search state for bookmarking/sharing
-- [ ] Smooth transition between browse and search modes
-- [ ] Performance remains optimal with no page reloads
-- [ ] Existing Entries page functionality is preserved
-- [ ] Search page redirects to Entries page with search open
-- [ ] Mobile experience is optimized for the combined interface
-- [ ] Clear visual distinction between search and browse modes
+- [x] Search interface is seamlessly integrated into Entries page header
+- [x] Search can be toggled open/closed without leaving the page
+- [x] Entry list updates dynamically based on search filters
+- [x] URL parameters preserve search state for bookmarking/sharing
+- [x] Smooth transition between browse and search modes
+- [x] Performance remains optimal with no page reloads
+- [x] Existing Entries page functionality is preserved
+- [x] Search page redirects to Entries page with search open
+- [x] Mobile experience is optimized for the combined interface
+- [x] Clear visual distinction between search and browse modes
 
 ## Technical Details
 - **Components affected**:

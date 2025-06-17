@@ -33,11 +33,19 @@ class SummaryStorage(BaseStorage):
                 key_topics TEXT NOT NULL,
                 mood TEXT NOT NULL,
                 favorite BOOLEAN NOT NULL DEFAULT 1,
+                prompt_type TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (entry_id) REFERENCES entries(id)
             )
             """
         )
+
+        # Add prompt_type column if it doesn't exist (for existing databases)
+        cursor.execute("PRAGMA table_info(entry_summaries)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if "prompt_type" not in columns:
+            cursor.execute("ALTER TABLE entry_summaries ADD COLUMN prompt_type TEXT")
+
         # Create index for entry summaries
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_entry_summaries_entry_id "
@@ -67,9 +75,9 @@ class SummaryStorage(BaseStorage):
                 """
                 INSERT INTO entry_summaries (
                     id, entry_id, summary, key_topics, mood,
-                    favorite, created_at
+                    favorite, prompt_type, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     summary_id,
@@ -78,6 +86,7 @@ class SummaryStorage(BaseStorage):
                     json.dumps(summary.key_topics),
                     summary.mood,
                     1 if summary.favorite else 0,
+                    getattr(summary, "prompt_type", None),
                     datetime.now().isoformat(),
                 ),
             )
@@ -100,14 +109,14 @@ class SummaryStorage(BaseStorage):
         Returns:
             List of EntrySummary objects
         """
-        from app.llm_service import EntrySummary
+        from app.models import EntrySummary
 
         conn = self.get_db_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
                 """
-                SELECT id, summary, key_topics, mood, favorite, created_at
+                SELECT id, summary, key_topics, mood, favorite, prompt_type, created_at
                 FROM entry_summaries
                 WHERE entry_id = ? AND favorite = 1
                 ORDER BY created_at DESC
@@ -123,6 +132,7 @@ class SummaryStorage(BaseStorage):
                     key_topics_json,
                     mood,
                     favorite,
+                    prompt_type,
                     created_at,
                 ) = row
 
@@ -132,6 +142,7 @@ class SummaryStorage(BaseStorage):
                     key_topics=json.loads(key_topics_json),
                     mood=mood,
                     favorite=bool(favorite),
+                    prompt_type=prompt_type,
                 )
                 summaries.append(summary)
 

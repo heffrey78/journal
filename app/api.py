@@ -21,9 +21,24 @@ from pydantic import BaseModel, Field
 import traceback
 import re
 
-from app.models import JournalEntry, LLMConfig, BatchAnalysisRequest, BatchAnalysis
+from app.models import (
+    JournalEntry,
+    LLMConfig,
+    BatchAnalysisRequest,
+    BatchAnalysis,
+    Persona,
+    PersonaCreate,
+    PersonaUpdate,
+)
 from app.storage import StorageManager
-from app.llm_service import LLMService, EntrySummary, BatchAnalysisError
+from app.storage.personas import PersonaStorage
+from app.llm_service import (
+    LLMService,
+    EntrySummary,
+    CUDAError,
+    CircuitBreakerOpen,
+    BatchAnalysisError,
+)
 from app.import_service import ImportService
 from app.organization_routes import organization_router
 from app.chat_routes import chat_router
@@ -55,7 +70,14 @@ app.include_router(config_router)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+    ],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
@@ -114,7 +136,7 @@ class EntryStats(BaseModel):
     most_used_tags: List[TagCount] = []
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total_entries": 5,
                 "oldest_entry": "2025-05-01T20:31:52",
@@ -176,7 +198,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         message=str(exc.detail),
         details=getattr(exc, "details", None),
     )
-    return JSONResponse(status_code=exc.status_code, content=error.dict())
+    return JSONResponse(status_code=exc.status_code, content=error.model_dump())
 
 
 @app.exception_handler(RequestValidationError)
@@ -188,7 +210,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         details=[{"loc": err["loc"], "msg": err["msg"]} for err in exc.errors()],
     )
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=error.dict()
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=error.model_dump()
     )
 
 
@@ -201,7 +223,7 @@ async def general_exception_handler(request: Request, exc: Exception):
         details=str(exc),
     )
     return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=error.dict()
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=error.model_dump()
     )
 
 
@@ -322,7 +344,7 @@ async def update_entry(
     """Update a journal entry"""
     try:
         updated_entry = storage.update_entry(
-            entry_id, update_data.dict(exclude_unset=True)
+            entry_id, update_data.model_dump(exclude_unset=True)
         )
         if not updated_entry:
             raise HTTPException(
@@ -498,6 +520,12 @@ async def summarize_entry(
         # Use the LLM service to generate the summary
         summary = llm.summarize_entry(entry.content)
         return summary
+    except (CUDAError, CircuitBreakerOpen) as e:
+        logger.error(f"GPU-related error in summarize_entry: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="AI service temporarily unavailable due to GPU issues. Please try again in a moment.",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to generate entry summary: {str(e)}"
@@ -534,6 +562,12 @@ async def summarize_entry_custom(
         # Use the LLM service to generate the summary with custom prompt
         summary = llm.summarize_entry(entry.content, prompt_type=request.prompt_type)
         return summary
+    except (CUDAError, CircuitBreakerOpen) as e:
+        logger.error(f"GPU-related error in summarize_entry_custom: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="AI service temporarily unavailable due to GPU issues. Please try again in a moment.",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to generate entry summary: {str(e)}"
@@ -611,6 +645,8 @@ async def get_favorite_summaries(
         # Get favorite summaries
         summaries = llm.get_favorite_summaries(entry_id)
         return summaries
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve favorite summaries: {str(e)}"
@@ -1537,6 +1573,10 @@ async def import_files(
 
     import_service = ImportService(storage)
 
+    # Handle "None" string from form data
+    if folder == "None":
+        folder = None
+
     # Parse tags
     tag_list = []
     if tags:
@@ -1663,3 +1703,165 @@ async def import_files(
         f"{results['total']} files successfully imported"
     )
     return results
+
+
+# Personas endpoints
+def get_persona_storage() -> PersonaStorage:
+    """Get PersonaStorage instance."""
+    return PersonaStorage()
+
+
+@app.get("/api/personas", response_model=List[Persona])
+async def list_personas(
+    include_default: bool = Query(True, description="Include default personas")
+):
+    """List all personas."""
+    try:
+        persona_storage = get_persona_storage()
+        personas = persona_storage.list_personas(include_default=include_default)
+        return personas
+    except Exception as e:
+        logger.error(f"Error listing personas: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list personas: {str(e)}",
+        )
+
+
+@app.get("/api/personas/default", response_model=Persona)
+async def get_default_persona():
+    """Get the default persona for new chats."""
+    try:
+        persona_storage = get_persona_storage()
+        persona = persona_storage.get_default_persona()
+        if not persona:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="No default persona found"
+            )
+        return persona
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting default persona: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get default persona: {str(e)}",
+        )
+
+
+@app.get("/api/personas/{persona_id}", response_model=Persona)
+async def get_persona(persona_id: str = Path(..., description="The persona ID")):
+    """Get a specific persona by ID."""
+    try:
+        persona_storage = get_persona_storage()
+        persona = persona_storage.get_persona(persona_id)
+        if not persona:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Persona with ID {persona_id} not found",
+            )
+        return persona
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting persona {persona_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get persona: {str(e)}",
+        )
+
+
+@app.post("/api/personas", response_model=Persona, status_code=status.HTTP_201_CREATED)
+async def create_persona(persona_data: PersonaCreate):
+    """Create a new persona."""
+    try:
+        persona_storage = get_persona_storage()
+        persona = persona_storage.create_persona(persona_data)
+        return persona
+    except Exception as e:
+        logger.error(f"Error creating persona: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create persona: {str(e)}",
+        )
+
+
+@app.put("/api/personas/{persona_id}", response_model=Persona)
+async def update_persona(
+    persona_id: str = Path(..., description="The persona ID"),
+    updates: PersonaUpdate = None,
+):
+    """Update an existing persona."""
+    try:
+        persona_storage = get_persona_storage()
+
+        # Check if persona exists
+        existing_persona = persona_storage.get_persona(persona_id)
+        if not existing_persona:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Persona with ID {persona_id} not found",
+            )
+
+        # Check if it's a default persona
+        if existing_persona.is_default:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot update default personas",
+            )
+
+        updated_persona = persona_storage.update_persona(persona_id, updates)
+        if not updated_persona:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Persona with ID {persona_id} not found",
+            )
+
+        return updated_persona
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating persona {persona_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update persona: {str(e)}",
+        )
+
+
+@app.delete("/api/personas/{persona_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_persona(persona_id: str = Path(..., description="The persona ID")):
+    """Delete a persona."""
+    try:
+        persona_storage = get_persona_storage()
+
+        # Check if persona exists
+        existing_persona = persona_storage.get_persona(persona_id)
+        if not existing_persona:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Persona with ID {persona_id} not found",
+            )
+
+        # Check if it's a default persona
+        if existing_persona.is_default:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot delete default personas",
+            )
+
+        success = persona_storage.delete_persona(persona_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Persona with ID {persona_id} not found",
+            )
+
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting persona {persona_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete persona: {str(e)}",
+        )

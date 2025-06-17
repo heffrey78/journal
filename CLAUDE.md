@@ -54,54 +54,35 @@ pytest --cov=app
 
 ## Task Tracking System
 
-This project uses a markdown-based task tracking system in `docs/tasks/`. When working on new features or fixes:
+This project uses a structured markdown-based task tracking system in `docs/tasks/`. For detailed guidelines, see `docs/tasks/tasks-directive.md`.
 
 ### Task File Format
-Each task follows the naming convention: `CXX-NNN-description.md` where:
-- `CXX` = Commit/Sprint number (e.g., C29)
-- `NNN` = Task number (e.g., 001)
-- `description` = Brief kebab-case description
+Tasks follow the naming convention: `TASK-XXXX-YY-ZZ.md` where:
+- `XXXX` = 4-digit task ID (0001-9999)
+- `YY` = 2-digit sub-task ID (00 for parent, 01-99 for sub-tasks)
+- `ZZ` = 2-digit version/revision number (starting at 00)
 
-### Task Structure
-```markdown
-# CXX-NNN: Task Title
-
-## Priority: High/Medium/Low
-## Status: Pending/In Progress/Completed
-## Estimated Effort: X hours
-
-## User Story
-**As a** [user type]
-**I want** [goal]
-**So that** [benefit]
-
-## Problem Description
-[Detailed description of the issue/feature]
-
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
-
-## Technical Details
-- **Files affected**: List of files
-- **Current behavior**: What happens now
-- **Expected behavior**: What should happen
-
-## Definition of Done
-- All acceptance criteria met
-- Tests written and passing
-- Documentation updated
-
-## Completion Summary (when done)
-**Completed on:** YYYY-MM-DD
-### Changes Made:
-[List of changes]
-### Verification:
-[How it was tested]
+### Folder Structure
+```
+docs/tasks/
+├── tasks-directive.md      # Complete task management guidelines
+├── roadmap.md             # Project roadmap and task numbering strategy
+├── active/                # Current sprint tasks
+├── backlog/              # Future tasks
+├── completed/            # Archived completed tasks
+└── templates/            # Task templates
+    └── task-template.md
 ```
 
-### Summary File
-Create a `CXX-summary.md` file for each sprint/commit group that lists all tasks, their status, and implementation order.
+### Creating New Tasks
+1. Use the template in `docs/tasks/templates/task-template.md`
+2. Follow the TASK-XXXX-YY-ZZ naming convention
+3. Place new tasks in the appropriate folder (active/ or backlog/)
+4. Include comprehensive Gherkin behavioral specifications
+5. Update roadmap.md as needed
+
+### Legacy Tasks
+Tasks using the old CXX-NNN format are being migrated to the new system. Completed legacy tasks remain in `docs/tasks/completed/` for reference.
 
 ## Key Architecture Decisions
 

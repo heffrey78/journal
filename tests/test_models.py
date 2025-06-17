@@ -28,7 +28,7 @@ class TestJournalEntry:
         assert entry.content == "This is a test entry"
         assert entry.tags == ["test", "pytest"]
         assert isinstance(entry.id, str)
-        assert len(entry.id) == 14  # Format is YYYYMMDDhhmmss
+        assert len(entry.id) == 23  # Format is YYYYMMDDhhmmss_XXXXXXXX
         assert isinstance(entry.created_at, datetime)
         assert entry.updated_at is None
 

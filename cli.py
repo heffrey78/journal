@@ -234,6 +234,10 @@ def bulk_import(
                 except ValueError:
                     pass  # Invalid date, keep as None
 
+            # Handle "None" string
+            if folder == "None":
+                folder = None
+
             # Process the file
             success, entry_id, error = import_service.process_file(
                 file_data=file_data,

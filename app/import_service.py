@@ -53,6 +53,10 @@ class ImportService:
             Tuple of (success, entry_id, error_message)
         """
         try:
+            # Handle "None" string
+            if folder == "None":
+                folder = None
+
             # Detect encoding
             encoding_result = chardet.detect(file_data)
             encoding = encoding_result.get("encoding", "utf-8")

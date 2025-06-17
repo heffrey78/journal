@@ -8,6 +8,30 @@ from app.models import JournalEntry  # Import JournalEntry model
 
 
 @pytest.fixture
+def mock_ollama():
+    """Fixture to mock ollama for all tests."""
+    with patch("app.llm_service.ollama") as mock_ollama:
+        # Mock ollama for LLMService initialization
+        mock_ollama.list.return_value = {
+            "models": [
+                {"name": "qwen3:latest"},
+                {"name": "qwen2.5:3b"},
+                {"name": "nomic-embed-text:latest"},
+            ]
+        }
+        mock_ollama.embeddings.return_value = {"embedding": [0.1, 0.2, 0.3]}
+
+        # Mock ollama.chat for tool analysis and other operations
+        mock_ollama.chat.return_value = {
+            "message": {
+                "role": "assistant",
+                "content": '{"should_use_tools": false, "recommended_tools": [], "analysis": "No tools needed"}',
+            }
+        }
+        yield mock_ollama
+
+
+@pytest.fixture
 def client():
     """Test client for the FastAPI application."""
     return TestClient(app)
@@ -57,14 +81,20 @@ class TestChatAPI:
         assert response.status_code == 200
 
         # Verify sessions are returned
-        sessions = response.json()
-        assert len(sessions) >= 3
+        paginated_response = response.json()
+        assert len(paginated_response["sessions"]) >= 3
+        assert paginated_response["total"] >= 3
+        assert "limit" in paginated_response
+        assert "offset" in paginated_response
+        assert "has_next" in paginated_response
+        assert "has_previous" in paginated_response
 
         # Verify pagination
         response = client.get("/chat/sessions?limit=2")
         assert response.status_code == 200
-        sessions = response.json()
-        assert len(sessions) <= 2
+        paginated_response = response.json()
+        assert len(paginated_response["sessions"]) <= 2
+        assert paginated_response["limit"] == 2
 
         # Clean up
         for session_id in session_ids:
@@ -198,7 +228,7 @@ class TestChatAPI:
         # Clean up
         client.delete(f"/chat/sessions/{session_id}")
 
-    def test_message_with_references(self, client):
+    def test_message_with_references(self, client, mock_ollama):
         """Test adding and retrieving a message with references."""
         # Create a session
         response = client.post(
@@ -208,46 +238,54 @@ class TestChatAPI:
         session_id = response.json()["id"]
 
         # Mock LLM service for processing
-        with patch("app.llm_service.LLMService.semantic_search") as mock_search, patch(
-            "app.llm_service.LLMService.chat_completion"
-        ) as mock_completion:
-            # Create mock entries
-            mock_entries = [
-                {
-                    "id": "20250503190939",
-                    "title": "Test Entry 1",
-                    "content": "Content 1",
-                    "similarity": 0.85,
-                },
-                {
-                    "id": "20250504072752",
-                    "title": "Test Entry 2",
-                    "content": "Content 2",
-                    "similarity": 0.75,
-                },
-            ]
-
-            # Configure mocks
-            mock_search.return_value = [
-                {
-                    "entry": JournalEntry(
-                        id=e["id"],
-                        title=e["title"],
-                        content=e["content"],
-                        created_at=datetime.now(),
-                    ),
-                    "similarity": e["similarity"],
-                    "entry_id": e["id"],
-                }
-                for e in mock_entries
-            ]
-
-            mock_completion.return_value = {
-                "message": {
-                    "role": "assistant",
-                    "content": "This is a response with references to your journal.",
-                }
+        with patch(
+            "app.llm_service.LLMService.analyze_message_for_tools"
+        ) as mock_tool_analysis, patch(
+            "app.tools.journal_search.JournalSearchTool.execute"
+        ) as mock_journal_tool, patch(
+            "app.llm_service.LLMService.synthesize_response_with_tools"
+        ) as mock_synthesis:
+            # Mock tool analysis to recommend journal search
+            mock_tool_analysis.return_value = {
+                "should_use_tools": True,
+                "recommended_tools": [
+                    {
+                        "tool_name": "journal_search",
+                        "confidence": 0.9,
+                        "reason": "User asking about journal entries",
+                        "suggested_query": "journal entries",
+                    }
+                ],
+                "analysis": "User wants to search journal entries",
             }
+
+            # Mock journal search tool results
+            from app.tools.base import ToolResult
+
+            mock_journal_tool.return_value = ToolResult(
+                success=True,
+                data={
+                    "results": [
+                        {
+                            "id": "20250503190939",
+                            "title": "Test Entry 1",
+                            "content_preview": "Content 1",
+                            "relevance": 0.85,
+                        },
+                        {
+                            "id": "20250504072752",
+                            "title": "Test Entry 2",
+                            "content_preview": "Content 2",
+                            "relevance": 0.75,
+                        },
+                    ]
+                },
+            )
+
+            # Mock response synthesis
+            mock_synthesis.return_value = (
+                "This is a response with references to your journal."
+            )
 
             # Process a message which should create references
             response = client.post(
@@ -335,9 +373,33 @@ class TestChatAPI:
     def test_process_message(self, client):
         """Test processing a message with LLM integration."""
         # We'll use mocking to avoid actual LLM calls during tests
-        with patch("app.llm_service.LLMService.semantic_search") as mock_search, patch(
+        with patch("app.llm_service.ollama") as mock_ollama, patch(
+            "app.llm_service.LLMService.semantic_search"
+        ) as mock_search, patch(
             "app.llm_service.LLMService.chat_completion"
         ) as mock_completion:
+            # Mock ollama for LLMService initialization
+            # Create proper mock objects that match ollama.list() structure
+            class MockModel:
+                def __init__(self, name):
+                    self.model = name
+
+            class MockListResponse:
+                def __init__(self, models):
+                    self.models = [MockModel(name) for name in models]
+
+            mock_ollama.list.return_value = MockListResponse(
+                ["qwen3:latest", "qwen2.5:3b", "nomic-embed-text:latest"]
+            )
+            mock_ollama.embeddings.return_value = {"embedding": [0.1, 0.2, 0.3]}
+
+            # Mock ollama.chat for tool analysis and other operations
+            mock_ollama.chat.return_value = {
+                "message": {
+                    "role": "assistant",
+                    "content": '{"should_use_tools": true, "recommended_tools": [{"tool_name": "journal_search", "confidence": 0.8, "reason": "User asking about journal entries", "suggested_query": "journal entries"}], "analysis": "User wants to search journal entries"}',
+                }
+            }
             # Create a proper JournalEntry object for the mock
             from app.models import JournalEntry
 
@@ -414,11 +476,11 @@ class TestChatAPI:
         # Clean up
         client.delete(f"/chat/sessions/{session_id}")
 
-    def test_conversation_context(self, client):
+    def test_conversation_context(self, client, mock_ollama):
         """Test multi-turn conversation with context."""
         # We'll use mocking to avoid actual LLM calls
         with patch("app.llm_service.LLMService.semantic_search") as mock_search, patch(
-            "app.llm_service.LLMService.chat_completion"
+            "app.llm_service.LLMService.generate_response_with_model"
         ) as mock_completion:
             # Mock the semantic search to return dummy results
             mock_search.return_value = [

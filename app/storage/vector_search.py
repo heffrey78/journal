@@ -205,7 +205,8 @@ class VectorStorage(BaseStorage):
 
         Args:
             entry_id: ID of the entry to update
-            embeddings: Dictionary mapping chunk_id to embedding vector (list or numpy array)
+            embeddings: Dictionary mapping chunk_id to embedding vector
+                        (list or numpy array)
 
         Returns:
             True if successful, False otherwise
@@ -220,7 +221,7 @@ class VectorStorage(BaseStorage):
                 else:
                     # Ensure it's float32 if already numpy array
                     embedding = embedding.astype(np.float32)
-                
+
                 # Convert numpy array to bytes for storage
                 embedding_bytes = embedding.tobytes()
 
@@ -234,6 +235,7 @@ class VectorStorage(BaseStorage):
             return True
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Error updating vectors for entry {entry_id}: {e}")
             return False
